@@ -310,13 +310,19 @@ label.labeledInput {
   grid-column: 2 / -1;
 }
 
-/* Keep the color swatch right beside its input instead of at the far edge */
+/* Keep the color swatch right beside its input instead of at the far
+   edge: a plain row, since a grid column would take the input's default
+   width rather than the narrower one it is given */
 #designer label.labeledInput:not([hiddenLabel]):has(.swatch) {
-  grid-template-columns: var(--prop-label-width) auto 1fr;
+  display: flex;
+}
+
+#designer label.labeledInput:not([hiddenLabel]):has(.swatch) > .labelText {
+  flex: 0 0 var(--prop-label-width);
 }
 
 #designer label.labeledInput:not([hiddenLabel]) .swatch {
-  justify-self: start;
+  flex: none;
 }
 
 label.labeledInput[hiddenLabel] span.labelText {
@@ -1329,9 +1335,23 @@ button.button:has(.board-link-badge) {
   border-top: 1px solid var(--border-color);
 }
 
-.picture-popover-link select {
+.picture-popover-link select,
+.picture-popover-link input {
   flex: 1;
   min-width: 0;
+}
+
+/* the labels line up, so the boxes do too */
+.picture-popover-link > span {
+  min-width: 5.5em;
+}
+
+/* ── Tone buttons: the tone picked stands out ── */
+.grid button.tone-chosen,
+body:not(.designing) .grid button.tone-chosen:hover {
+  outline: 4px solid var(--brand);
+  outline-offset: -4px;
+  font-weight: 700;
 }
 /* ── Text display / utterance bar ── */
 .display {
@@ -3410,6 +3430,18 @@ fieldset.piece-field legend {
 .piece-tabs {
   flex-direction: column;
   align-items: stretch;
+}
+
+/* the board's voice, under the boards */
+.board-voice {
+  padding-bottom: 0.6em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* why the chosen voice isn't the one speaking */
+.voice-problem {
+  color: hsl(0 65% 40%);
+  font-weight: 600;
 }
 
 /* color choices for a piece: one clickable swatch per color */

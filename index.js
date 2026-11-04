@@ -14120,7 +14120,7 @@ function rule(origin, condition, updates) {
   };
 }
 
-/** @typedef {"message" | "grid" | "button" | "tabs" | "board"} PieceKind */
+/** @typedef {"message" | "grid" | "button" | "tabs" | "board" | "tones"} PieceKind */
 
 /** What the Add menu offers, in order
  * @type {{kind: PieceKind, label: string, icon: string, about: string}[]} */
@@ -14155,10 +14155,16 @@ const pieceKinds = [
     icon: "📂",
     about: "A button that opens a new board, like a folder. Boards can open more boards.",
   },
+  {
+    kind: "tones",
+    label: "Tone buttons",
+    icon: "🎭",
+    about: "Calm, Urgent, Angry… Pick one, and the words after it are said that way.",
+  },
 ];
 
 /** How much room each kind of piece takes next to others to start with */
-const defaultScale = { message: 1, grid: 4, button: 1, tabs: 4, clear: 1 };
+const defaultScale = { message: 1, grid: 4, button: 1, tabs: 4, clear: 1, tones: 1 };
 
 /** Components a student can click on and change */
 const selectable = new Set([
@@ -14191,7 +14197,7 @@ const visualClasses = new Set([
 function pieceLabel(component) {
   switch (component.className) {
     case "Grid":
-      return "Word grid";
+      return isToneGrid(component) ? "Tone buttons" : "Word grid";
     case "Display":
       return "Message bar";
     case "Button":
@@ -14318,6 +14324,29 @@ function spec(kind) {
       };
     case "grid":
       return gridSpec$1();
+    case "tones": {
+      // a word grid of its own whose words set the tone ($Tone) rather
+      // than being said (setUp gives it that rule, addPiece the words)
+      const name = uniqueName(TONES);
+      return {
+        className: "Grid",
+        props: {
+          name,
+          rows: "1",
+          columns: String(toneWords.length),
+          fillItems: "true",
+          background: "white",
+          scale: String(defaultScale.tones),
+        },
+        children: [
+          {
+            className: "GridFilter",
+            props: { field: "#grid", operator: "equals", value: `'${name}'` },
+            children: [],
+          },
+        ],
+      };
+    }
     case "button":
       return {
         className: "Button",
@@ -14378,6 +14407,7 @@ function addPiece(kind, anchor = null, side = "below") {
     }
   }
   setUp(allComponents(created));
+  if (kind === "tones") addToneWords(created);
   Globals.layout.update();
   // select the part a student would change next
   return created.className === "Stack" ? created.children[0] : created;
@@ -14673,7 +14703,9 @@ function setUp(added) {
     ["$Display", "add_word(#label)"],
   ]);
   for (const component of added) {
-    if (component.className === "Grid") {
+    if (component.className === "Grid" && isToneGrid(component)) {
+      addRule(component["name"].value, "", [["$Tone", "#label"]]);
+    } else if (component.className === "Grid") {
       addRule(component["name"].value, "", speakAndAdd);
     } else if (component.className === "Display") {
       const state = component["stateName"].value;
@@ -14987,6 +15019,82 @@ function ensureSquareLinks(grid) {
   actions.update();
 }
 
+/** A grid's rule that says its words (not the one for squares that open
+ * a board)
+ * @param {TreeBase} grid */
+function sayingRule(grid) {
+  const name = grid["name"].value;
+  return Globals.actions.children.find(
+    (r) =>
+      r["origin"].value === name &&
+      r.children.some(
+        (c) => c.className === "ActionUpdate" && c["stateName"].value === "$Speak",
+      ),
+  );
+}
+
+/** True when the grid says its words with the usual rule, so whether
+ * they go into the message bar can be chosen
+ * @param {TreeBase} grid */
+function canChooseMessageBar(grid) {
+  return !!sayingRule(grid);
+}
+
+/** The state that, set to a message bar's state name, clears that bar
+ * once the word has been said (speech.js) */
+const CLEAR_AFTER_SAYING = "$ClearAfterSaying";
+
+/** @typedef {"add" | "show" | "say"} MessageBarMode */
+
+/** What a word tapped in this grid does to the message bar: "add" builds
+ * a sentence, "show" shows the word and clears it once said, "say" leaves
+ * the bar alone
+ * @param {TreeBase} grid
+ * @returns {MessageBarMode} */
+function messageBarMode(grid) {
+  const updates = (sayingRule(grid)?.children ?? []).filter(
+    (c) => c.className === "ActionUpdate",
+  );
+  if (updates.some((c) => c["stateName"].value === CLEAR_AFTER_SAYING)) return "show";
+  if (updates.some((c) => c["stateName"].value === "$Display")) return "add";
+  return "say";
+}
+
+/** Change what a grid's tapped words do to the message bar, by changing
+ * its rule: "add" sets $Display to add_word(#label), "show" sets it to
+ * the word alone and asks for it to be cleared once said, "say" leaves
+ * $Display out
+ * @param {TreeBase} grid
+ * @param {MessageBarMode} mode */
+function setMessageBarMode(grid, mode) {
+  const saying = sayingRule(grid);
+  if (!saying || mode === messageBarMode(grid)) return;
+  for (const update of saying.children.filter(
+    (c) =>
+      c.className === "ActionUpdate" &&
+      ["$Display", CLEAR_AFTER_SAYING].includes(c["stateName"].value),
+  )) {
+    update.remove();
+  }
+  /** @type {[string, string][]} */
+  const updates =
+    mode === "add"
+      ? [["$Display", "add_word(#label)"]]
+      : mode === "show"
+        ? [
+            ["$Display", "#label"],
+            [CLEAR_AFTER_SAYING, "'$Display'"],
+          ]
+        : [];
+  for (const [stateName, newValue] of updates) {
+    TreeBase.fromObject(
+      { className: "ActionUpdate", props: { stateName, newValue }, children: [] },
+      saying,
+    );
+  }
+  Globals.actions.update();
+}
+
 /** Rename a board, and everything that opens it
  * @param {TreeBase} board
  * @param {string} label */
@@ -15110,6 +15218,1062 @@ function boardTree() {
   return result;
 }
 
+// ── Tone buttons: words that choose how the next words are said ─────────
+
+const TONES = "tones";
+
+/** The tone buttons' words; speech.js knows how each sounds */
+const toneWords = ["Normal", "Calm", "Urgent", "Angry", "Sarcastic"];
+
+/** True for a grid of tone buttons: its rule sets $Tone, or, before it
+ * has a rule, it is new and named for them
+ * @param {TreeBase} grid */
+function isToneGrid(grid) {
+  const name = grid["name"].value;
+  const rule = Globals.actions.children.find((r) => r["origin"].value === name);
+  if (rule) {
+    return rule.children.some(
+      (c) => c.className === "ActionUpdate" && c["stateName"].value === "$Tone",
+    );
+  }
+  return new RegExp(`^${TONES}\\d*$`).test(name);
+}
+
+/** Fill new tone buttons with the tones, marked so they show which is
+ * picked (grid.js)
+ * @param {TreeBase} grid */
+async function addToneWords(grid) {
+  const { data } = Globals;
+  const name = grid["name"].value;
+  const words = toneWords.map((label) => ({
+    label,
+    grid: name,
+    sets: "tone",
+    sheetName: "sheet1",
+  }));
+  const rows = [...data.contentRows, ...words];
+  data.setContent(rows);
+  await db.write("content", rows);
+  Globals.state.update();
+}
+
+async function readSheetFromBlob(blob) {
+  const XLSX = await __vitePreload(() => import('./xlsx.js'),true?[]:void 0);
+  const data = await blob.arrayBuffer();
+  const workbook = XLSX.read(data, { codepage: 65001 });
+  /** @type {Rows} */
+  const dataArray = [];
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const ref = sheet["!ref"];
+    if (!ref) continue;
+    const range = XLSX.utils.decode_range(ref);
+    const names = [];
+    const handlers = [];
+    const validColumns = [];
+    // process the header and choose a handler for each column
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      let columnName = sheet[XLSX.utils.encode_cell({ r: 0, c })]?.v;
+      if (typeof columnName !== "string" || !columnName) {
+        continue;
+      }
+      columnName = columnName.toLowerCase();
+      names.push(columnName.trim(" "));
+      validColumns.push(c);
+      switch (columnName) {
+        case "row":
+        case "column":
+        case "page":
+          handlers.push("number");
+          break;
+        default:
+          handlers.push("string");
+          break;
+      }
+    }
+    // Process the rows
+    for (let r = range.s.r + 1; r <= range.e.r; r++) {
+      /** @type {Row} */
+      const row = { sheetName };
+      for (let i = 0; i < validColumns.length; i++) {
+        /** @type {string} */
+        const name = names[i];
+        const c = validColumns[i];
+        let value = sheet[XLSX.utils.encode_cell({ r, c })]?.v;
+        switch (handlers[i]) {
+          case "string":
+            if (typeof value === "undefined") {
+              value = "";
+            }
+            if (typeof value !== "string") {
+              value = value.toString(10);
+            }
+            if (value && typeof value === "string") {
+              row[name] = value;
+            }
+            break;
+          case "number":
+            if (typeof value === "number") {
+              row[name] = Math.floor(value);
+            } else if (value && typeof value === "string") {
+              value = parseInt(value, 10);
+              if (isNaN(value)) {
+                value = 0;
+              }
+              row[name] = value;
+            }
+            break;
+        }
+      }
+      if (Object.keys(row).length > 1) dataArray.push(row);
+    }
+  }
+  return dataArray;
+}
+
+/** Save Rows as a spreadsheet
+ * @param {string} name
+ * @param {Row[]} rows
+ * @param {string} type
+ */
+async function saveContent(name, rows, type) {
+  const XLSX = await __vitePreload(() => import('./xlsx.js'),true?[]:void 0);
+  const sheetNames = new Set(rows.map((row) => row.sheetName || "sheet1"));
+  if (sheetNames.size === 0) {
+    throw new Error("No content to save");
+  }
+  const workbook = XLSX.utils.book_new();
+  for (const sheetName of sheetNames) {
+    let sheetRows = rows.filter(
+      (row) => sheetName == (row.sheetName || "sheet1"),
+    );
+    if (type != "csv") {
+      sheetRows = sheetRows.map((row) => {
+        const { sheetName, ...rest } = row;
+        return rest;
+      });
+    }
+    const worksheet = XLSX.utils.json_to_sheet(sheetRows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  }
+  XLSX.writeFileXLSX(workbook, `${name}.${type}`);
+}
+
+/** Add Notes related functions to Eval for use in Actions
+ */
+
+Object.assign(Functions, {
+  Notes: (/** @type {string[]} */ ...args) => {
+    const result = Globals.data.Notes(args);
+    db.write("notes", Globals.data.noteRows);
+    return result;
+  },
+  SaveNotes: () => {
+    saveContent("notes", Globals.data.noteRows, "xlsx");
+    return "saved";
+  },
+  /** @param {string} name
+   * @param {string} text
+   */
+  SaveText: (name, text) => {
+    const blob = new Blob([text], { type: "text/plain" });
+    o$1(blob, { fileName: name, extensions: [".txt"], id: "osdpi" });
+  },
+
+  add_letter: updateString(add_character),
+
+  ClipText: (text = "", length = 100) => {
+    const nl_index = text.indexOf("\n");
+    if (nl_index > 0 && nl_index < length) length = nl_index;
+    return text.slice(0, length);
+  },
+
+  Caret: updateString(setCaret),
+});
+
+/**
+ * insert a character at the index
+ * @param {string} old
+ * @param {number} index
+ * @param {string} char
+ * @returns {string}
+ */
+function insert(old, index, char) {
+  if (index < 0) {
+    // add it at the end
+    return old + char;
+  } else {
+    // insert it at the index
+    return old.slice(0, index) + char + old.slice(index);
+  }
+}
+
+const cursor = "\ufeff";
+
+/**
+ * Add a keyboard character with backspace and arrow motions simulated
+ * by simulating the normal caret with a special character
+ * @param {string} old
+ * @param {string} char
+ * @returns {string}
+ */
+function add_character(old, char) {
+  let index = old.indexOf(cursor);
+  let result = old;
+  if (char.length == 1) {
+    result = insert(old, index, char);
+  } else {
+    // some special character, handle a few
+    switch (char.toLowerCase()) {
+      case "enter":
+      case "return":
+        result = insert(old, index, "\n");
+        break;
+      case "tab":
+        result = insert(old, index, " ");
+        break;
+      case "backspace":
+      case "delete":
+        if (index < 0) {
+          result = old.slice(0, old.length - 1);
+        } else {
+          result = old.slice(0, index - 1) + cursor + old.slice(index + 1);
+        }
+        break;
+      case "arrowleft":
+        if (index < 0) {
+          if (old.length > 0) {
+            result =
+              old.slice(0, old.length - 1) + cursor + old.slice(old.length - 1);
+          } else {
+            result = old;
+          }
+        } else if (index > 0) {
+          result =
+            old.slice(0, index - 1) +
+            cursor +
+            old[index - 1] +
+            old.slice(index + 1);
+        }
+        break;
+      case "arrowright":
+        if (index == old.length - 1) {
+          result = old.slice(0, old.length - 1);
+        } else if (index >= 0) {
+          result =
+            old.slice(0, index) +
+            old[index + 1] +
+            cursor +
+            old.slice(index + 2);
+        }
+        break;
+      default:
+        result = old;
+    }
+  }
+  if (result[result.length - 1] == cursor) {
+    result = result.slice(0, result.length - 1);
+  }
+  return result;
+}
+
+/** @param {string} old
+ * @param {string} offset
+ */
+function setCaret(old, offset) {
+  const index = parseInt(offset);
+  const clean = old.replace(cursor, "");
+  if (index < 0 || index > clean.length) return clean;
+  return clean.slice(0, index) + cursor + clean.slice(index);
+}
+
+/**
+ * @param {string} text
+ * @returns {Hole[]}
+ */
+
+function formatNote(text) {
+  const index = text.indexOf(cursor);
+  if (index < 0) {
+    return [html`<span>${text}</span>`];
+  } else {
+    return [
+      html`<span
+        >${text.slice(0, index)}<span class="caret"></span>${text.slice(
+          index + 1,
+        )}</span
+      >`,
+    ];
+  }
+}
+
+/**
+ * ElevenLabs voices, with the student's own free key: natural US voices
+ * that are the same in every browser, and tones (Angry, Sarcastic, …)
+ * said with real emotion.
+ *
+ * The key stays in this browser's localStorage, like the AI service keys
+ * (ai/index.js), and is never saved in a board or a build. Audio already
+ * made is kept on this device, so a word said again plays at once and
+ * costs nothing from the monthly allowance. Whenever ElevenLabs can't
+ * speak (no key, no internet, allowance used up) the computer's voice
+ * does, so a word is never left unsaid.
+ */
+
+const API = "https://api.elevenlabs.io/v1";
+const KEY_NAME = "os-dpi-elevenlabs-key";
+const CACHE_NAME = "os-dpi-elevenlabs";
+
+/** Marks an ElevenLabs voice in a Speech component's voiceURI */
+const ELEVEN = "eleven:";
+
+/** Fast, for words said plainly */
+const FAST_MODEL = "eleven_flash_v2_5";
+/** Understands emotion tags like [angry], for tones */
+const EXPRESSIVE_MODEL = "eleven_v3";
+
+/** How each tone is asked for: a tag for the expressive model, and
+ * settings for the fast one if the expressive one can't be used. The
+ * player can't go above full volume, so the voice itself carries an angry
+ * or urgent tone; Calm is quieter. */
+const toneStyles = {
+  Normal: { tag: "", stability: 0.5, style: 0, speed: 1, volume: 1 },
+  Calm: { tag: "[calm]", stability: 0.8, style: 0, speed: 0.85, volume: 0.6 },
+  Urgent: { tag: "[urgent]", stability: 0.3, style: 0.6, speed: 1.15, volume: 1 },
+  Angry: { tag: "[angry]", stability: 0.2, style: 0.9, speed: 1.05, volume: 1 },
+  Sarcastic: { tag: "[sarcastic]", stability: 0.3, style: 0.8, speed: 0.85, volume: 1 },
+};
+
+/** @param {string} voiceURI */
+function isEleven(voiceURI) {
+  return String(voiceURI || "").startsWith(ELEVEN);
+}
+
+/** @returns {string} */
+function getElevenKey() {
+  try {
+    return (localStorage.getItem(KEY_NAME) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Save (or clear, with "") the key on this device
+ * @param {string} key */
+function setElevenKey(key) {
+  key = key.trim();
+  try {
+    if (key) localStorage.setItem(KEY_NAME, key);
+    else localStorage.removeItem(KEY_NAME);
+  } catch {
+    // storage blocked; the key just isn't remembered
+  }
+  elevenProblem = "";
+  voiceList = null;
+  // a load still going with the old key is dropped, so the new key's
+  // voices always come
+  loadingVoices = null;
+  loadElevenVoices();
+}
+
+/** What last went wrong, for the designer to show ("" when all is well)
+ * @type {string} */
+let elevenProblem = "";
+
+/** @param {string} problem */
+function setProblem(problem) {
+  if (problem === elevenProblem) return;
+  elevenProblem = problem;
+  Globals.state?.update();
+}
+
+// ── voices ──────────────────────────────────────────────────────────────
+
+/** The US English voices: [id, name shown in the list]
+ * @type {[string, string][] | null} */
+let voiceList = null;
+/** @type {Promise<void> | null} */
+let loadingVoices = null;
+
+/** The voices once loaded (none before) */
+function elevenVoices() {
+  return voiceList ?? [];
+}
+
+/** Get the voices, once; the voice lists redraw when they arrive */
+function loadElevenVoices() {
+  if (voiceList || loadingVoices) return;
+  const key = getElevenKey();
+  /** @param {boolean} withKey */
+  const list = (withKey) =>
+    fetch(`${API}/voices`, { headers: withKey ? { "xi-api-key": key } : {} });
+  const load = (loadingVoices = list(!!key)
+    // a key that may not read Voices (only Text to Speech, as the steps
+    // say) can still speak; ElevenLabs's own voices list without one
+    .then((response) => (!response.ok && key ? list(false) : response))
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`voices: ${response.status}`);
+      const { voices } = await response.json();
+      if (load !== loadingVoices) return; // the key changed meanwhile
+      voiceList = voices
+        // American voices only, as with the computer's voices
+        .filter((/** @type {any} */ v) => /american/i.test(v.labels?.accent ?? ""))
+        .map((/** @type {any} */ v) => {
+          const name = String(v.name).split(" - ")[0];
+          const about = [v.labels?.gender, v.labels?.age?.replace("_", " ")]
+            .filter((x) => x && x !== "neutral")
+            .join(", ");
+          return /** @type {[string, string]} */ ([
+            v.voice_id,
+            about ? `${name} (${about})` : name,
+          ]);
+        })
+        .sort((/** @type {[string, string]} */ a, /** @type {[string, string]} */ b) =>
+          a[1].localeCompare(b[1]),
+        );
+      document.dispatchEvent(new Event("os-dpi-voices"));
+      Globals.state?.update();
+    })
+    .catch((error) => {
+      console.error("ElevenLabs voices failed to load", error);
+      if (load === loadingVoices) {
+        setProblem("ElevenLabs voices couldn't be loaded; check the internet connection and the key.");
+      }
+    })
+    .finally(() => {
+      if (load === loadingVoices) loadingVoices = null;
+    }));
+}
+
+// ── speaking ────────────────────────────────────────────────────────────
+
+/** One ordinary audio player. Web Audio would allow louder than full, but
+ * Safari can run it without a sound coming out, so the voice plays the way
+ * any audio clip does. */
+const player = new Audio();
+/** The clip's address, freed when the next one plays
+ * @type {string} */
+let playingUrl = "";
+/** Each request's number, so only the latest one plays */
+let latest = 0;
+
+/** Clips made this session
+ * @type {Map<string, Blob>} */
+const clips = new Map();
+
+/** Stop whatever ElevenLabs is saying */
+function stopEleven() {
+  latest++;
+  player.pause();
+}
+
+/**
+ * Say text in an ElevenLabs voice.
+ * @param {string} text
+ * @param {string} voiceURI - ELEVEN + the voice id
+ * @param {string} tone - a name from speech.js's Tones
+ * @param {number} volume - the board's own volume, 0 to 1
+ * @param {() => void} [done] - called when it has been said
+ * @returns {Promise<boolean>} false when it couldn't, so the computer's
+ *   voice can say it instead
+ */
+async function speakEleven(text, voiceURI, tone, volume, done = () => {}) {
+  const key = getElevenKey();
+  if (!key) {
+    setProblem("Paste an ElevenLabs key to use this voice; the computer's voice speaks until then.");
+    return false;
+  }
+  stopEleven();
+  const request = latest;
+  const voice = voiceURI.slice(ELEVEN.length);
+  const style = toneStyles[/** @type {keyof typeof toneStyles} */ (tone)] ?? toneStyles.Normal;
+  const id = `${voice}|${tone}|${text}`;
+
+  let clip = clips.get(id);
+  if (!clip) {
+    const audio = await saved(id, () => make(text, voice, style, key));
+    if (!audio) return false;
+    clip = new Blob([audio], { type: "audio/mpeg" });
+    clips.set(id, clip);
+    if (clips.size > 100) clips.delete(/** @type {string} */ (clips.keys().next().value));
+  }
+  if (request !== latest) return true; // something newer was said
+  setProblem("");
+  return play(clip, Math.min(1, Math.max(0, style.volume * volume)), done);
+}
+
+/**
+ * Audio kept on this device from before, or made now and kept
+ * @param {string} id
+ * @param {() => Promise<ArrayBuffer | null>} makeIt
+ * @returns {Promise<ArrayBuffer | null>}
+ */
+async function saved(id, makeIt) {
+  // a made-up address to file it under; it is never fetched
+  const address = `https://audio.os-dpi.invalid/${encodeURIComponent(id)}`;
+  /** @type {Cache | null} */
+  let cache = null;
+  try {
+    cache = await caches.open(CACHE_NAME);
+    const kept = await cache.match(address);
+    if (kept) return await kept.arrayBuffer();
+  } catch {
+    // no cache storage (private window); just make it each time
+  }
+  const audio = await makeIt();
+  if (audio && cache) {
+    cache
+      .put(address, new Response(audio.slice(0), { headers: { "Content-Type": "audio/mpeg" } }))
+      .catch(() => {});
+  }
+  return audio;
+}
+
+/**
+ * Ask ElevenLabs for the audio: the expressive model for a tone, falling
+ * back to the fast one with the tone's settings
+ * @param {string} text
+ * @param {string} voice
+ * @param {typeof toneStyles.Normal} style
+ * @param {string} key
+ * @returns {Promise<ArrayBuffer | null>}
+ */
+async function make(text, voice, style, key) {
+  if (style.tag) {
+    const audio = await ask(voice, key, {
+      text: `${style.tag} ${text}`,
+      model_id: EXPRESSIVE_MODEL,
+    });
+    if (audio) return audio;
+  }
+  return ask(voice, key, {
+    text,
+    model_id: FAST_MODEL,
+    voice_settings: {
+      stability: style.stability,
+      similarity_boost: 0.75,
+      style: style.style,
+      speed: style.speed,
+    },
+  });
+}
+
+/**
+ * @param {string} voice
+ * @param {string} key
+ * @param {Object} body
+ * @returns {Promise<ArrayBuffer | null>}
+ */
+async function ask(voice, key, body) {
+  let response;
+  try {
+    response = await fetch(
+      `${API}/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+  } catch {
+    setProblem("No internet connection to ElevenLabs; the computer's voice is speaking instead.");
+    return null;
+  }
+  if (response.ok) return response.arrayBuffer();
+
+  const detail = await response.text().catch(() => "");
+  console.error("ElevenLabs:", response.status, detail);
+  // ElevenLabs explains itself in detail.message
+  let reason = "";
+  try {
+    reason = String(JSON.parse(detail)?.detail?.message ?? "");
+  } catch {
+    reason = detail.slice(0, 200);
+  }
+  if (/unusual.activity/i.test(detail)) {
+    setProblem("ElevenLabs has paused free use for this account (it reported unusual activity, which can happen on a school network or VPN); the computer's voice is speaking instead.");
+  } else if (/quota|credits|limit/i.test(detail)) {
+    setProblem("This month's free ElevenLabs allowance is used up; the computer's voice is speaking instead. Words said before still play.");
+  } else if (response.status === 401) {
+    setProblem("The ElevenLabs key wasn't accepted. Check it was copied whole, and that it may use Text to Speech.");
+  } else if (response.status === 429) {
+    setProblem("ElevenLabs is busy; the computer's voice is speaking instead for now.");
+  } else {
+    setProblem(`ElevenLabs didn't speak (error ${response.status}${reason ? `: ${reason}` : ""}); the computer's voice is speaking instead.`);
+  }
+  return null;
+}
+
+/** A moment of silence, as a WAV clip, to start the player during a tap */
+function silence() {
+  const samples = 800; // 0.1 s at 8000 Hz, 8-bit
+  const wav = new DataView(new ArrayBuffer(44 + samples));
+  const text = (/** @type {number} */ at, /** @type {string} */ value) =>
+    [...value].forEach((c, i) => wav.setUint8(at + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  wav.setUint32(4, 36 + samples, true);
+  text(8, "WAVEfmt ");
+  wav.setUint32(16, 16, true);
+  wav.setUint16(20, 1, true); // PCM
+  wav.setUint16(22, 1, true); // mono
+  wav.setUint32(24, 8000, true);
+  wav.setUint32(28, 8000, true);
+  wav.setUint16(32, 1, true);
+  wav.setUint16(34, 8, true);
+  text(36, "data");
+  wav.setUint32(40, samples, true);
+  for (let i = 0; i < samples; i++) wav.setUint8(44 + i, 128); // 8-bit silence
+  return URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+}
+
+/** Browsers (Safari above all) only let a page start sound during a tap or
+ * key press, but ElevenLabs's audio arrives a moment after one. Playing
+ * silence on the player during the student's first tap lets it play
+ * whatever comes later. */
+let unlocked = false;
+function unlock() {
+  if (unlocked || !getElevenKey()) return;
+  unlocked = true;
+  player.src = silence();
+  player.play().catch(() => {
+    unlocked = false; // try again on the next tap
+  });
+}
+document.addEventListener("pointerdown", unlock, true);
+document.addEventListener("keydown", unlock, true);
+
+/**
+ * @param {Blob} clip
+ * @param {number} volume - 0 to 1
+ * @param {() => void} done - called when it has played to the end
+ * @returns {Promise<boolean>}
+ */
+async function play(clip, volume, done) {
+  if (playingUrl) URL.revokeObjectURL(playingUrl);
+  playingUrl = URL.createObjectURL(clip);
+  player.src = playingUrl;
+  player.volume = volume;
+  player.onended = done;
+  try {
+    await player.play();
+    return true;
+  } catch (error) {
+    console.error("ElevenLabs audio couldn't play", error);
+    setProblem("The browser blocked the sound. Tap or click anywhere on the page once, then try again.");
+    return false;
+  }
+}
+
+/**
+ * Board designs from other OS-DPI forks sometimes bind pitch/rate/volume to
+ * a state name (e.g. "$Rate") rather than a number; this app's Speech props
+ * are plain floats, so that comes through as NaN. Assigning a non-finite
+ * value to SpeechSynthesisUtterance's rate/pitch/volume throws, so fall back
+ * to the neutral default instead of letting one bad value silence speech.
+ * @param {number} value
+ * @param {number} fallback
+ */
+function finiteOr(value, fallback) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Tell the page how speaking is going: "boundary" at each word (the
+ * message bar can highlight it) and "end" when done
+ * @param {"boundary" | "end"} type
+ * @param {number} [charIndex]
+ */
+function announce(type, charIndex = 0) {
+  const event = new Event(type);
+  Object.defineProperty(event, "charIndex", { value: charIndex });
+  document.dispatchEvent(event);
+}
+
+/** Counts what has been asked to be said, so only the latest one's end
+ * counts (a word cut off by the next one ends too) */
+let sayings = 0;
+
+/** A word shown in the message bar only while it is said ("says it,
+ * shows it, then clears it", pieces.js) is cleared once it has been said */
+document.addEventListener("end", () => {
+  const bar = String(Globals.state?.get(CLEAR_AFTER_SAYING) || "");
+  if (bar) Globals.state.update({ [bar]: "", [CLEAR_AFTER_SAYING]: "" });
+});
+
+/**
+ * @param {string} message
+ * @param {string} voiceURI
+ * @param {number} pitch
+ * @param {number} rate
+ * @param {number} volume
+ * @param {() => void} [done] - called when it has been said
+ */
+async function speak(
+  message,
+  voiceURI,
+  pitch,
+  rate,
+  volume,
+  done = () => announce("end"),
+) {
+  if (!message) return;
+  stopEleven();
+  const voices = await getVoices();
+  const voice = voiceURI && voices.find((voice) => voice.voiceURI == voiceURI);
+  const utterance = new SpeechSynthesisUtterance(message);
+  if (voice) {
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
+  } else {
+    utterance.lang = "en-US";
+  }
+  utterance.pitch = finiteOr(pitch, 1);
+  utterance.rate = finiteOr(rate, 1);
+  utterance.volume = finiteOr(volume, 1);
+  utterance.addEventListener("boundary", (event) =>
+    announce("boundary", event.charIndex),
+  );
+  utterance.addEventListener("end", done);
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utterance);
+}
+
+/** Ways of saying a word. The browser voice can only change its speed,
+ * pitch and volume, so each tone is a mix of those; volume can't go above
+ * full, so Calm is quieter rather than Angry louder. An ending adds
+ * punctuation many voices say with more force. */
+const Tones = {
+  Normal: { rate: 1, pitch: 1, volume: 1, ending: "" },
+  Calm: { rate: 0.8, pitch: 0.85, volume: 0.55, ending: "" },
+  Urgent: { rate: 1.3, pitch: 1.15, volume: 1, ending: "!" },
+  Angry: { rate: 1.1, pitch: 0.7, volume: 1, ending: "!" },
+  Sarcastic: { rate: 0.65, pitch: 1.3, volume: 0.9, ending: "" },
+};
+
+/** @param {any} name
+ * @returns {keyof typeof Tones | ""} */
+function toneNamed(name) {
+  const key = String(name ?? "").trim();
+  return key in Tones ? /** @type {keyof typeof Tones} */ (key) : "";
+}
+
+/**
+ * What to say and how, for the message just set to be spoken: a button's
+ * own "say it like" text stands in for its word, and the tone is the
+ * button's own, else its grid's, else the one picked on the tone buttons
+ * ($Tone).
+ * @param {string} message
+ * @param {Record<string, any>} button - the button pressed (Actions keeps
+ *   the data of the last press)
+ */
+function howToSay(message, button = Globals.actions?.last?.data ?? {}) {
+  const say = String(button.say ?? "").trim();
+  if (say && message.trim() === String(button.label ?? "").trim()) {
+    message = say;
+  }
+  const name =
+    toneNamed(button.tone) ||
+    toneNamed(button.GridTone) ||
+    toneNamed(Globals.state.get("$Tone")) ||
+    "Normal";
+  const tone = Tones[name];
+  if (tone.ending && !/[.!?]\s*$/.test(message)) message += tone.ending;
+  return { message, tone, name };
+}
+
+class Speech extends TreeBase {
+  stateName = new String$1("$Speak");
+  voiceURI = new Voice("", { label: "Voice" });
+  pitch = new Float(1);
+  rate = new Float(1);
+  volume = new Float(1);
+
+  /** Say a message in this board's voice, the way the button wants it
+   * @param {string} text
+   * @param {Record<string, any>} [button] */
+  say(text, button) {
+    const { message, tone, name } = howToSay(text, button);
+    const voice = this.voiceURI.value;
+    const saying = ++sayings;
+    const done = () => {
+      if (saying === sayings) announce("end");
+    };
+    const computerVoice = () =>
+      speak(
+        message,
+        voice,
+        // pitch runs 0 to 2 and volume 0 to 1
+        Math.min(2, finiteOr(this.pitch.value, 1) * tone.pitch),
+        finiteOr(this.rate.value, 1) * tone.rate,
+        Math.min(1, finiteOr(this.volume.value, 1) * tone.volume),
+        done,
+      );
+    if (!isEleven(voice)) {
+      computerVoice();
+      return;
+    }
+    // ElevenLabs says the tone itself; when it can't speak (no key, no
+    // internet, allowance used up) the computer's voice does
+    speechSynthesis.cancel();
+    speakEleven(message, voice, name, finiteOr(this.volume.value, 1), done).then(
+      (spoke) => {
+        if (!spoke) computerVoice();
+      },
+    );
+  }
+
+  async speak() {
+    const { state } = Globals;
+    const voiceURI = this.voiceURI.value;
+    const message = toString(state.get(this.stateName.value)).replace(
+      cursor,
+      "",
+    );
+    const voices = await getVoices();
+    const voice =
+      voiceURI && voices.find((voice) => voice.voiceURI == voiceURI);
+    const utterance = new SpeechSynthesisUtterance(message);
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else {
+      utterance.lang = "en-US";
+    }
+    utterance.pitch = finiteOr(this.pitch.value, 1);
+    utterance.rate = finiteOr(this.rate.value, 1);
+    utterance.volume = finiteOr(this.volume.value, 1);
+    utterance.addEventListener("boundary", (event) => {
+      document.dispatchEvent(
+        new SpeechSynthesisEvent("boundary", {
+          utterance: event.utterance,
+          charIndex: event.charIndex,
+        }),
+      );
+    });
+    utterance.addEventListener("end", (event) => {
+      document.dispatchEvent(
+        new SpeechSynthesisEvent("end", {
+          utterance: event.utterance,
+          charIndex: event.charIndex,
+        }),
+      );
+    });
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+  }
+
+  template() {
+    const { state } = Globals;
+    boardSpeech = this;
+    if (state.hasBeenUpdated(this.stateName.value)) {
+      this.say(toString(state.get(this.stateName.value)));
+    }
+    return html`<div />`;
+  }
+}
+TreeBase.register(Speech, "Speech");
+
+/** The board's Speech, last drawn, so the designer can try out a word
+ * @type {Speech | null} */
+let boardSpeech = null;
+
+/** Say a word the way its button would on the board (designer preview)
+ * @param {Record<string, any>} button - the button's data */
+function sayLikeButton(button) {
+  const text = String(button.label ?? "");
+  if (boardSpeech) boardSpeech.say(text, button);
+  else {
+    const { message, tone } = howToSay(text, button);
+    speak(message, "", tone.pitch, tone.rate, tone.volume);
+  }
+}
+
+/** Only voices with a United States English accent are offered
+ * @param {SpeechSynthesisVoice} voice */
+function isUSEnglish(voice) {
+  return /^en[-_]US/i.test(voice.lang);
+}
+
+/** macOS ships novelty voices (Bells, Boing, Zarvox, …), legacy robotic
+ * voices (Fred, Junior, …), and cartoonish character voices (Grandma,
+ * Rocko, …). None are appropriate for an AAC user's voice, so keep them
+ * out of the picker and out of the default-voice selection. */
+const NOVELTY_VOICES = new Set([
+  "Albert", "Bad News", "Bahh", "Bells", "Boing", "Bubbles", "Cellos",
+  "Deranged", "Good News", "Jester", "Organ", "Superstar", "Trinoids",
+  "Whisper", "Wobble", "Zarvox",
+  "Fred", "Junior", "Kathy", "Ralph",
+  "Eddy", "Flo", "Grandma", "Grandpa", "Reed", "Rocko", "Sandy", "Shelley",
+]);
+
+/** @param {SpeechSynthesisVoice} voice */
+function isGenericVoice(voice) {
+  // names may carry a locale suffix, e.g. "Eddy (English (US))"
+  const baseName = voice.name.split("(")[0].trim();
+  return !NOVELTY_VOICES.has(baseName);
+}
+
+/** Keep the generic US voices; fall back rather than offer nothing on
+ * systems where the filters would leave an empty list
+ * @param {SpeechSynthesisVoice[]} all */
+function usOnly(all) {
+  const generic = all.filter(isGenericVoice);
+  const candidates = generic.length ? generic : all;
+  const us = candidates.filter(isUSEnglish);
+  return us.length ? us : candidates;
+}
+
+/** @type{SpeechSynthesisVoice[]} */
+let voices = [];
+
+// Pre-load voices as early as possible so speakSync() can use them.
+// Chrome fires "voiceschanged" asynchronously; this ensures the cache is warm.
+if (typeof speechSynthesis !== "undefined") {
+  voices = usOnly(speechSynthesis.getVoices());
+  speechSynthesis.addEventListener("voiceschanged", () => {
+    voices = usOnly(speechSynthesis.getVoices());
+  });
+}
+
+/** The preferred US-accent voice, or null when none have loaded yet */
+function preferredVoice() {
+  return voices.find((voice) => voice.default) || voices[0] || null;
+}
+
+/**
+ * Speak text synchronously inside a user-gesture handler.
+ *
+ * Unlike speak(), this does NOT await voice loading, so it stays within
+ * Chrome's transient user-activation context and works without "await".
+ * Call this directly from pointerup / click handlers.
+ *
+ * @param {string} text
+ */
+function speakSync(text) {
+  if (!text) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  // Attach the best pre-loaded voice if available (improves Chrome reliability)
+  const voice = preferredVoice();
+  if (voice) {
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
+  } else {
+    utterance.lang = "en-US";
+  }
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utterance);
+}
+
+/**
+ * Promise to return voices
+ *
+ * @return {Promise<SpeechSynthesisVoice[]>} Available voices
+ */
+function getVoices() {
+  return new Promise(function (resolve) {
+    // iOS won't fire the voiceschanged event so we have to poll for them
+    function f() {
+      voices = (voices.length && voices) || usOnly(speechSynthesis.getVoices());
+      if (voices.length) resolve(voices);
+      else setTimeout(f, 100);
+    }
+    f();
+  });
+}
+
+/** Edge's online voices that sound like a person, e.g. "Microsoft Aria
+ * Online (Natural) - English (United States)"; only Edge has them
+ * @param {SpeechSynthesisVoice} voice */
+function isNatural(voice) {
+  return /\(Natural\)/i.test(voice.name);
+}
+
+/** True when the browser offers Edge's natural voices */
+async function hasNaturalVoices() {
+  return (await getVoices()).some(isNatural);
+}
+
+/** A short name for the voice list: "Aria (natural)" rather than the
+ * whole of Edge's name
+ * @param {SpeechSynthesisVoice} voice */
+function voiceName(voice) {
+  const natural = /^Microsoft (\w+?)(Multilingual)? Online \(Natural\)/i.exec(voice.name);
+  if (natural) return `${natural[1]} (natural)`;
+  return `${voice.name} ${voice.lang}`;
+}
+
+class VoiceSelect extends HTMLSelectElement {
+  constructor() {
+    super();
+  }
+  /** Browsers load voices in stages (the computer's first, online ones
+   * like Edge's natural voices a moment later), so the list is made again
+   * whenever more arrive */
+  refresh = () => this.addVoices();
+
+  connectedCallback() {
+    this.addVoices();
+    speechSynthesis.addEventListener("voiceschanged", this.refresh);
+    document.addEventListener("os-dpi-voices", this.refresh);
+  }
+
+  disconnectedCallback() {
+    speechSynthesis.removeEventListener("voiceschanged", this.refresh);
+    document.removeEventListener("os-dpi-voices", this.refresh);
+  }
+
+  async addVoices() {
+    const voices = await getVoices();
+    const current = this.value || this.getAttribute("value");
+    // the voices added last time go; options from the page (like the
+    // computer's own voice) stay
+    for (const old of this.querySelectorAll("[data-voice]")) old.remove();
+    /** @param {SpeechSynthesisVoice} a
+     * @param {SpeechSynthesisVoice} b
+     */
+    function compareVoices(a, b) {
+      // the natural voices first: they sound the most like a person
+      return (
+        +isNatural(b) - +isNatural(a) ||
+        a.lang.localeCompare(b.lang) ||
+        voiceName(a).localeCompare(voiceName(b))
+      );
+    }
+    voices.sort(compareVoices);
+    for (const voice of voices) {
+      const item = document.createElement("option");
+      item.dataset.voice = "";
+      item.value = voice.voiceURI;
+      if (voice.voiceURI == current) item.setAttribute("selected", "");
+      item.innerText = voiceName(voice);
+      this.add(item);
+    }
+    // ElevenLabs voices, once the student has pasted a key
+    if (getElevenKey()) {
+      loadElevenVoices();
+      const group = document.createElement("optgroup");
+      group.dataset.voice = "";
+      group.label = "ElevenLabs (your key)";
+      for (const [id, name] of elevenVoices()) {
+        const item = document.createElement("option");
+        item.value = ELEVEN + id;
+        item.innerText = name;
+        group.append(item);
+      }
+      // the board's voice stays picked while the list (re)loads
+      if (current && isEleven(current) && !group.querySelector(`[value="${CSS.escape(current)}"]`)) {
+        const item = document.createElement("option");
+        item.value = current;
+        item.innerText = "ElevenLabs voice (loading…)";
+        group.append(item);
+      }
+      if (group.children.length) this.append(group);
+    }
+    if (current) this.value = current;
+  }
+}
+customElements.define("select-voice", VoiceSelect, { extends: "select" });
+
 /**
  * Return an image or video element given the name + parameters
  * like "foo.mp4 autoplay loop".
@@ -15174,6 +16338,9 @@ class Grid extends TreeBase {
   scale = new Float(1);
   name = new String$1("grid");
   background = new Color("white");
+  tone = new String$1("", {
+    title: "How every word here is said: Calm, Urgent, Angry or Sarcastic (empty for the tone buttons' choice)",
+  });
   buttonColor = new String$1("", {
     title: 'The buttons\' color: empty for the grid\'s own color, "none" for plain buttons, or any color',
   });
@@ -15468,6 +16635,23 @@ class Grid extends TreeBase {
     Globals.state.update();
   }
 
+  /** Set or clear one field of a word, like how it is said
+   * @param {number} absIdx
+   * @param {string} field
+   * @param {string} value - "" clears it */
+  async setWordField(absIdx, field, value) {
+    const { data } = Globals;
+    const target = data.getMatchingRows(this.children, false)[absIdx];
+    const rows = [...data.contentRows];
+    const index = rows.indexOf(target);
+    if (index < 0 || String(target[field] ?? "") === value) return;
+    const { [field]: _old, ...rest } = target;
+    rows[index] = value ? { ...rest, [field]: value } : rest;
+    data.setContent(rows);
+    await db.write("content", rows);
+    Globals.state.update();
+  }
+
   /** The picture choices, floating by the word's square */
   picturePopover() {
     const pick = /** @type {NonNullable<Grid["_picturePick"]>} */ (this._picturePick);
@@ -15488,10 +16672,10 @@ class Grid extends TreeBase {
       class="picture-popover"
       style=${styleString(style)}
       role="dialog"
-      aria-label=${`Picture for ${pick.label}`}
+      aria-label=${`Settings for ${pick.label}`}
     >
       <div class="picture-popover-title">
-        <strong>Picture for “${pick.label}”</strong>
+        <strong>“${pick.label}”</strong>
         <button aria-label="Close" @click=${() => this.closePictures()}>✕</button>
       </div>
       <div class="picture-popover-choices">
@@ -15546,6 +16730,57 @@ class Grid extends TreeBase {
           <option value="+">opens a new board</option>
         </select>
       </label>
+      ${row && row.sets !== "tone"
+        ? html`<label class="picture-popover-link">
+              <span>Tone</span>
+              <select
+                @change=${(/** @type {Event} */ e) =>
+                  this.setWordField(
+                    pick.absIdx,
+                    "tone",
+                    /** @type {HTMLSelectElement} */ (e.target).value,
+                  )}
+              >
+                <option value="" ?selected=${!row.tone}>
+                  ${this.tone.value
+                    ? `the grid's (${this.tone.value})`
+                    : "the tone buttons' choice"}
+                </option>
+                ${Object.keys(Tones).map(
+                  (tone) => html`<option value=${tone} ?selected=${row.tone === tone}>
+                    ${tone}
+                  </option>`,
+                )}
+              </select>
+            </label>
+            <label class="picture-popover-link">
+              <span>Say it like</span>
+              <input
+                type="text"
+                placeholder=${String(row.label ?? "")}
+                .value=${String(row.say ?? "")}
+                @change=${(/** @type {Event} */ e) =>
+                  this.setWordField(
+                    pick.absIdx,
+                    "say",
+                    /** @type {HTMLInputElement} */ (e.target).value.trim(),
+                  )}
+              />
+              <button
+                title="Hear it"
+                aria-label="Hear it"
+                @click=${(/** @type {Event} */ e) => {
+                  // what is in the box now, even if not saved yet
+                  const box = /** @type {HTMLElement} */ (e.currentTarget)
+                    .previousElementSibling;
+                  const say = box instanceof HTMLInputElement ? box.value.trim() : "";
+                  sayLikeButton({ ...row, say, GridTone: this.tone.value });
+                }}
+              >
+                ▶
+              </button>
+            </label>`
+        : html``}
     </div>`;
   }
 
@@ -15768,6 +17003,9 @@ class Grid extends TreeBase {
     const absIdx = item._absIndex ?? -1;
     const isDraggable = hasContent && absIdx >= 0;
     const self = this;
+    // a tone button shows whether its tone is the one picked
+    const tone = String(Globals.state?.get("$Tone") || "Normal");
+    const chosen = item.sets === "tone" && item.label === tone;
 
     /** @type {Hole[]} */
     let content;
@@ -15807,7 +17045,10 @@ class Grid extends TreeBase {
         ...item,
         ComponentName: name,
         ComponentType: this.className,
+        GridTone: this.tone.value,
       }}
+      aria-pressed=${item.sets === "tone" ? String(chosen) : null}
+      class=${item.sets === "tone" && chosen ? "tone-chosen" : null}
       ?disabled=${!item.label && !item.symbol}
       title=${Globals.state?.get("editing") && absIdx >= 0
         ? "Click the word to change it, or its picture to choose another; double-click for a picture from your computer"
@@ -16150,256 +17391,6 @@ class Grid extends TreeBase {
 }
 TreeBase.register(Grid, "Grid");
 
-async function readSheetFromBlob(blob) {
-  const XLSX = await __vitePreload(() => import('./xlsx.js'),true?[]:void 0);
-  const data = await blob.arrayBuffer();
-  const workbook = XLSX.read(data, { codepage: 65001 });
-  /** @type {Rows} */
-  const dataArray = [];
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    const ref = sheet["!ref"];
-    if (!ref) continue;
-    const range = XLSX.utils.decode_range(ref);
-    const names = [];
-    const handlers = [];
-    const validColumns = [];
-    // process the header and choose a handler for each column
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      let columnName = sheet[XLSX.utils.encode_cell({ r: 0, c })]?.v;
-      if (typeof columnName !== "string" || !columnName) {
-        continue;
-      }
-      columnName = columnName.toLowerCase();
-      names.push(columnName.trim(" "));
-      validColumns.push(c);
-      switch (columnName) {
-        case "row":
-        case "column":
-        case "page":
-          handlers.push("number");
-          break;
-        default:
-          handlers.push("string");
-          break;
-      }
-    }
-    // Process the rows
-    for (let r = range.s.r + 1; r <= range.e.r; r++) {
-      /** @type {Row} */
-      const row = { sheetName };
-      for (let i = 0; i < validColumns.length; i++) {
-        /** @type {string} */
-        const name = names[i];
-        const c = validColumns[i];
-        let value = sheet[XLSX.utils.encode_cell({ r, c })]?.v;
-        switch (handlers[i]) {
-          case "string":
-            if (typeof value === "undefined") {
-              value = "";
-            }
-            if (typeof value !== "string") {
-              value = value.toString(10);
-            }
-            if (value && typeof value === "string") {
-              row[name] = value;
-            }
-            break;
-          case "number":
-            if (typeof value === "number") {
-              row[name] = Math.floor(value);
-            } else if (value && typeof value === "string") {
-              value = parseInt(value, 10);
-              if (isNaN(value)) {
-                value = 0;
-              }
-              row[name] = value;
-            }
-            break;
-        }
-      }
-      if (Object.keys(row).length > 1) dataArray.push(row);
-    }
-  }
-  return dataArray;
-}
-
-/** Save Rows as a spreadsheet
- * @param {string} name
- * @param {Row[]} rows
- * @param {string} type
- */
-async function saveContent(name, rows, type) {
-  const XLSX = await __vitePreload(() => import('./xlsx.js'),true?[]:void 0);
-  const sheetNames = new Set(rows.map((row) => row.sheetName || "sheet1"));
-  if (sheetNames.size === 0) {
-    throw new Error("No content to save");
-  }
-  const workbook = XLSX.utils.book_new();
-  for (const sheetName of sheetNames) {
-    let sheetRows = rows.filter(
-      (row) => sheetName == (row.sheetName || "sheet1"),
-    );
-    if (type != "csv") {
-      sheetRows = sheetRows.map((row) => {
-        const { sheetName, ...rest } = row;
-        return rest;
-      });
-    }
-    const worksheet = XLSX.utils.json_to_sheet(sheetRows);
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-  }
-  XLSX.writeFileXLSX(workbook, `${name}.${type}`);
-}
-
-/** Add Notes related functions to Eval for use in Actions
- */
-
-Object.assign(Functions, {
-  Notes: (/** @type {string[]} */ ...args) => {
-    const result = Globals.data.Notes(args);
-    db.write("notes", Globals.data.noteRows);
-    return result;
-  },
-  SaveNotes: () => {
-    saveContent("notes", Globals.data.noteRows, "xlsx");
-    return "saved";
-  },
-  /** @param {string} name
-   * @param {string} text
-   */
-  SaveText: (name, text) => {
-    const blob = new Blob([text], { type: "text/plain" });
-    o$1(blob, { fileName: name, extensions: [".txt"], id: "osdpi" });
-  },
-
-  add_letter: updateString(add_character),
-
-  ClipText: (text = "", length = 100) => {
-    const nl_index = text.indexOf("\n");
-    if (nl_index > 0 && nl_index < length) length = nl_index;
-    return text.slice(0, length);
-  },
-
-  Caret: updateString(setCaret),
-});
-
-/**
- * insert a character at the index
- * @param {string} old
- * @param {number} index
- * @param {string} char
- * @returns {string}
- */
-function insert(old, index, char) {
-  if (index < 0) {
-    // add it at the end
-    return old + char;
-  } else {
-    // insert it at the index
-    return old.slice(0, index) + char + old.slice(index);
-  }
-}
-
-const cursor = "\ufeff";
-
-/**
- * Add a keyboard character with backspace and arrow motions simulated
- * by simulating the normal caret with a special character
- * @param {string} old
- * @param {string} char
- * @returns {string}
- */
-function add_character(old, char) {
-  let index = old.indexOf(cursor);
-  let result = old;
-  if (char.length == 1) {
-    result = insert(old, index, char);
-  } else {
-    // some special character, handle a few
-    switch (char.toLowerCase()) {
-      case "enter":
-      case "return":
-        result = insert(old, index, "\n");
-        break;
-      case "tab":
-        result = insert(old, index, " ");
-        break;
-      case "backspace":
-      case "delete":
-        if (index < 0) {
-          result = old.slice(0, old.length - 1);
-        } else {
-          result = old.slice(0, index - 1) + cursor + old.slice(index + 1);
-        }
-        break;
-      case "arrowleft":
-        if (index < 0) {
-          if (old.length > 0) {
-            result =
-              old.slice(0, old.length - 1) + cursor + old.slice(old.length - 1);
-          } else {
-            result = old;
-          }
-        } else if (index > 0) {
-          result =
-            old.slice(0, index - 1) +
-            cursor +
-            old[index - 1] +
-            old.slice(index + 1);
-        }
-        break;
-      case "arrowright":
-        if (index == old.length - 1) {
-          result = old.slice(0, old.length - 1);
-        } else if (index >= 0) {
-          result =
-            old.slice(0, index) +
-            old[index + 1] +
-            cursor +
-            old.slice(index + 2);
-        }
-        break;
-      default:
-        result = old;
-    }
-  }
-  if (result[result.length - 1] == cursor) {
-    result = result.slice(0, result.length - 1);
-  }
-  return result;
-}
-
-/** @param {string} old
- * @param {string} offset
- */
-function setCaret(old, offset) {
-  const index = parseInt(offset);
-  const clean = old.replace(cursor, "");
-  if (index < 0 || index > clean.length) return clean;
-  return clean.slice(0, index) + cursor + clean.slice(index);
-}
-
-/**
- * @param {string} text
- * @returns {Hole[]}
- */
-
-function formatNote(text) {
-  const index = text.indexOf(cursor);
-  if (index < 0) {
-    return [html`<span>${text}</span>`];
-  } else {
-    return [
-      html`<span
-        >${text.slice(0, index)}<span class="caret"></span>${text.slice(
-          index + 1,
-        )}</span
-      >`,
-    ];
-  }
-}
-
 class Display extends TreeBase {
   stateName = new String$1("$Display");
   Name = new String$1("");
@@ -16407,7 +17398,6 @@ class Display extends TreeBase {
   fontSize = new Float(2);
   scale = new Float(1);
   highlightWords = new Boolean$1(false);
-  clearAfterSpeaking = new Boolean$1(false);
   showHistory = new Boolean$1(false);
 
   /** @type {HTMLDivElement | null} */
@@ -16596,9 +17586,6 @@ class Display extends TreeBase {
       }
     } else if (event.type == "end") {
       selection.empty();
-      if (this.clearAfterSpeaking.value) {
-        Globals.state.update({ [this.stateName.value]: "" });
-      }
     }
   }
 
@@ -17611,230 +18598,6 @@ class Monitor extends TreeBase {
   }
 }
 TreeBase.register(Monitor, "Monitor");
-
-/**
- * Board designs from other OS-DPI forks sometimes bind pitch/rate/volume to
- * a state name (e.g. "$Rate") rather than a number; this app's Speech props
- * are plain floats, so that comes through as NaN. Assigning a non-finite
- * value to SpeechSynthesisUtterance's rate/pitch/volume throws, so fall back
- * to the neutral default instead of letting one bad value silence speech.
- * @param {number} value
- * @param {number} fallback
- */
-function finiteOr(value, fallback) {
-  return Number.isFinite(value) ? value : fallback;
-}
-
-/**
- * @param {string} message
- * @param {string} voiceURI
- * @param {number} pitch
- * @param {number} rate
- * @param {number} volume
- */
-async function speak(message, voiceURI, pitch, rate, volume) {
-  if (!message) return;
-  const voices = await getVoices();
-  const voice = voiceURI && voices.find((voice) => voice.voiceURI == voiceURI);
-  const utterance = new SpeechSynthesisUtterance(message);
-  if (voice) {
-    utterance.voice = voice;
-    utterance.lang = voice.lang;
-  } else {
-    utterance.lang = "en-US";
-  }
-  utterance.pitch = finiteOr(pitch, 1);
-  utterance.rate = finiteOr(rate, 1);
-  utterance.volume = finiteOr(volume, 1);
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
-}
-
-class Speech extends TreeBase {
-  stateName = new String$1("$Speak");
-  voiceURI = new Voice("", { label: "Voice" });
-  pitch = new Float(1);
-  rate = new Float(1);
-  volume = new Float(1);
-
-  async speak() {
-    const { state } = Globals;
-    const voiceURI = this.voiceURI.value;
-    const message = toString(state.get(this.stateName.value)).replace(
-      cursor,
-      "",
-    );
-    const voices = await getVoices();
-    const voice =
-      voiceURI && voices.find((voice) => voice.voiceURI == voiceURI);
-    const utterance = new SpeechSynthesisUtterance(message);
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang;
-    } else {
-      utterance.lang = "en-US";
-    }
-    utterance.pitch = finiteOr(this.pitch.value, 1);
-    utterance.rate = finiteOr(this.rate.value, 1);
-    utterance.volume = finiteOr(this.volume.value, 1);
-    utterance.addEventListener("boundary", (event) => {
-      document.dispatchEvent(
-        new SpeechSynthesisEvent("boundary", {
-          utterance: event.utterance,
-          charIndex: event.charIndex,
-        }),
-      );
-    });
-    utterance.addEventListener("end", (event) => {
-      document.dispatchEvent(
-        new SpeechSynthesisEvent("end", {
-          utterance: event.utterance,
-          charIndex: event.charIndex,
-        }),
-      );
-    });
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utterance);
-  }
-
-  template() {
-    const { state } = Globals;
-    if (state.hasBeenUpdated(this.stateName.value)) {
-      const message = toString(state.get(this.stateName.value));
-      speak(
-        message,
-        this.voiceURI.value,
-        this.pitch.value,
-        this.rate.value,
-        this.volume.value,
-      );
-    }
-    return html`<div />`;
-  }
-}
-TreeBase.register(Speech, "Speech");
-
-/** Only voices with a United States English accent are offered
- * @param {SpeechSynthesisVoice} voice */
-function isUSEnglish(voice) {
-  return /^en[-_]US/i.test(voice.lang);
-}
-
-/** macOS ships novelty voices (Bells, Boing, Zarvox, …), legacy robotic
- * voices (Fred, Junior, …), and cartoonish character voices (Grandma,
- * Rocko, …). None are appropriate for an AAC user's voice, so keep them
- * out of the picker and out of the default-voice selection. */
-const NOVELTY_VOICES = new Set([
-  "Albert", "Bad News", "Bahh", "Bells", "Boing", "Bubbles", "Cellos",
-  "Deranged", "Good News", "Jester", "Organ", "Superstar", "Trinoids",
-  "Whisper", "Wobble", "Zarvox",
-  "Fred", "Junior", "Kathy", "Ralph",
-  "Eddy", "Flo", "Grandma", "Grandpa", "Reed", "Rocko", "Sandy", "Shelley",
-]);
-
-/** @param {SpeechSynthesisVoice} voice */
-function isGenericVoice(voice) {
-  // names may carry a locale suffix, e.g. "Eddy (English (US))"
-  const baseName = voice.name.split("(")[0].trim();
-  return !NOVELTY_VOICES.has(baseName);
-}
-
-/** Keep the generic US voices; fall back rather than offer nothing on
- * systems where the filters would leave an empty list
- * @param {SpeechSynthesisVoice[]} all */
-function usOnly(all) {
-  const generic = all.filter(isGenericVoice);
-  const candidates = generic.length ? generic : all;
-  const us = candidates.filter(isUSEnglish);
-  return us.length ? us : candidates;
-}
-
-/** @type{SpeechSynthesisVoice[]} */
-let voices = [];
-
-// Pre-load voices as early as possible so speakSync() can use them.
-// Chrome fires "voiceschanged" asynchronously; this ensures the cache is warm.
-if (typeof speechSynthesis !== "undefined") {
-  voices = usOnly(speechSynthesis.getVoices());
-  speechSynthesis.addEventListener("voiceschanged", () => {
-    voices = usOnly(speechSynthesis.getVoices());
-  });
-}
-
-/** The preferred US-accent voice, or null when none have loaded yet */
-function preferredVoice() {
-  return voices.find((voice) => voice.default) || voices[0] || null;
-}
-
-/**
- * Speak text synchronously inside a user-gesture handler.
- *
- * Unlike speak(), this does NOT await voice loading, so it stays within
- * Chrome's transient user-activation context and works without "await".
- * Call this directly from pointerup / click handlers.
- *
- * @param {string} text
- */
-function speakSync(text) {
-  if (!text) return;
-  const utterance = new SpeechSynthesisUtterance(text);
-  // Attach the best pre-loaded voice if available (improves Chrome reliability)
-  const voice = preferredVoice();
-  if (voice) {
-    utterance.voice = voice;
-    utterance.lang = voice.lang;
-  } else {
-    utterance.lang = "en-US";
-  }
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
-}
-
-/**
- * Promise to return voices
- *
- * @return {Promise<SpeechSynthesisVoice[]>} Available voices
- */
-function getVoices() {
-  return new Promise(function (resolve) {
-    // iOS won't fire the voiceschanged event so we have to poll for them
-    function f() {
-      voices = (voices.length && voices) || usOnly(speechSynthesis.getVoices());
-      if (voices.length) resolve(voices);
-      else setTimeout(f, 100);
-    }
-    f();
-  });
-}
-
-class VoiceSelect extends HTMLSelectElement {
-  constructor() {
-    super();
-  }
-  connectedCallback() {
-    this.addVoices();
-  }
-
-  async addVoices() {
-    const voices = await getVoices();
-    /** @param {SpeechSynthesisVoice} a
-     * @param {SpeechSynthesisVoice} b
-     */
-    function compareVoices(a, b) {
-      return a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name);
-    }
-    voices.sort(compareVoices);
-    const current = this.getAttribute("value");
-    for (const voice of voices) {
-      const item = document.createElement("option");
-      item.value = voice.voiceURI;
-      if (voice.voiceURI == current) item.setAttribute("selected", "");
-      item.innerText = `${voice.name} ${voice.lang}`;
-      this.add(item);
-    }
-  }
-}
-customElements.define("select-voice", VoiceSelect, { extends: "select" });
 
 /** @param {string} filename */
 async function playAudio(filename) {
@@ -18862,20 +19625,25 @@ class DesignerPanel extends TreeBase {
  * @type {boolean | null} */
 let panelOpen = null;
 
-/** Transient "✓ Saved" confirmation */
+/** Transient "✓ Saved" confirmation, and which box it belongs to */
 let notice = "";
+/** @type {"ai" | "voices"} */
+let noticeFor = "ai";
 /** @type {number | null} */
 let noticeTimer = null;
 
-/** @param {string} text */
-function showNotice(text) {
+/** @param {string} text
+ * @param {"ai" | "voices"} [where] */
+function showNotice(text, where = "ai") {
   notice = text;
+  noticeFor = where;
   if (noticeTimer !== null) clearTimeout(noticeTimer);
   noticeTimer = window.setTimeout(() => {
     notice = "";
     noticeTimer = null;
     Globals.state.update();
-  }, 2500);
+    // a warning stays long enough to read
+  }, text.startsWith("⚠") ? 10000 : 2500);
   Globals.state.update();
 }
 
@@ -18997,7 +19765,88 @@ function aiSettings() {
       These settings are stored only on this device and are never included
       when you save or share a design.
     </p>
-    ${notice ? html`<span class="ai-key-confirm">${notice}</span>` : html``}
+    ${notice && noticeFor === "ai" ? html`<span class="ai-key-confirm">${notice}</span>` : html``}
+  </details>`;
+}
+
+/** Whether the student opened or closed the voices panel
+ * @type {boolean | null} */
+let voicesOpen = null;
+
+/** The ElevenLabs key, next to the AI service's: more natural voices,
+ * and tones said with real feeling (elevenlabs.js). Saved on this device
+ * only. */
+function voiceSettings() {
+  const key = getElevenKey();
+  return html`<details
+    class="ai-key voice-key"
+    ?open=${voicesOpen ?? false}
+    @toggle=${(/** @type {Event} */ e) => {
+      voicesOpen = /** @type {HTMLDetailsElement} */ (e.target).open;
+    }}
+  >
+    <summary>Voices: ElevenLabs ${key ? "✓" : "— optional free key"}</summary>
+    <p class="ai-key-note">
+      Natural voices that sound the same in every browser, and tones (Angry,
+      Sarcastic…) said with real feeling. Free for about 10,000 letters a
+      month; words said before replay for free. Everything said on the board
+      is sent to ElevenLabs to be spoken.
+    </p>
+    <ol class="ai-key-steps">
+      <li>
+        Go to
+        <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noreferrer"
+          >elevenlabs.io/app/settings/api-keys</a
+        >
+        and sign up.
+      </li>
+      <li>Create an API key with <strong>Text to Speech: Access</strong> (everything else can be No Access), then copy it.</li>
+      <li>Paste it into the field below.</li>
+      <li>In the Layout tab, pick a voice under “ElevenLabs” in the Voice menu.</li>
+    </ol>
+    <label class="ai-settings-row">
+      <span>API key</span>
+      <input
+        type="password"
+        class="ai-input"
+        placeholder="sk_..."
+        autocomplete="off"
+        .value=${key}
+        @change=${(/** @type {Event} */ e) => {
+          const value = /** @type {HTMLInputElement} */ (e.target).value.trim();
+          setElevenKey(value);
+          // the key list shows only a key's ID; the key itself is shown
+          // once, when it is made, and starts with sk_
+          showNotice(
+            !value
+              ? "Key removed"
+              : value.startsWith("sk_")
+                ? "✓ Key saved"
+                : "⚠ That doesn't look like a key: ElevenLabs keys start with sk_ (the key list only shows an ID). Make a new key and copy it when it's shown.",
+            "voices",
+          );
+        }}
+      />
+    </label>
+    <div class="ai-key-actions">
+      <button
+        type="button"
+        class="ai-key-remove-btn"
+        ?disabled=${!key}
+        @click=${() => {
+          setElevenKey("");
+          showNotice("Key removed", "voices");
+        }}
+      >
+        Remove key
+      </button>
+    </div>
+    ${notice && noticeFor === "voices" ? html`<span class="ai-key-confirm">${notice}</span>` : html``}
+    ${elevenProblem ? html`<p class="ai-error" role="status">⚠ ${elevenProblem}</p>` : html``}
+    <p class="ai-key-note">
+      The key is stored only on this device and is never included when you
+      save or share a design.
+    </p>
   </details>`;
 }
 
@@ -19626,7 +20475,7 @@ class Content extends DesignerPanel {
               ${this._aiStatus === "loading" ? "Generating…" : "✨ Generate"}
             </button>
 
-            ${aiSettings()}
+            <p class="ai-key-note">The AI key is under Keys, below.</p>
 
             ${this._aiStatus === "error"
               ? html`<p class="ai-error">⚠ ${this._aiError}</p>`
@@ -19640,6 +20489,15 @@ class Content extends DesignerPanel {
               : html``}
           </div>
         </details>
+        </section>
+
+        <section class="content-section content-keys">
+        <h2>Keys</h2>
+        <p class="ai-key-note">
+          Free keys for the AI features and for more voices. They stay on
+          this device and are never saved in a design.
+        </p>
+        ${aiSettings()} ${voiceSettings()}
         </section>
 
         <section class="content-section">
@@ -20776,7 +21634,7 @@ class Layout extends DesignerPanel {
         </button>`;
     }
     return html`<div class="layout-simple">
-      ${outline}${empty ? html`` : this.boardsBar()}${body}
+      ${outline}${empty ? html`` : html`${this.boardsBar()}${voiceSetting(page)}`}${body}
     </div>`;
   }
 
@@ -21154,7 +22012,14 @@ class Layout extends DesignerPanel {
               set: (/** @type {string} */ value) => renameGrid(piece, value),
             })}
           </div>
-          ${howToFill()}`;
+          ${isToneGrid(piece)
+            ? html`<p class="piece-hint">
+                Tap a tone on the board, and the words after it are said that
+                way until another is tapped. The tones are Normal, Calm,
+                Urgent, Angry and Sarcastic.
+              </p>`
+            : html`${toneSetting(piece)} ${messageBarSetting(piece)}
+              ${howToFill()}`}`;
       case "Display": {
         const size = piece["fontSize"];
         const sizes = [
@@ -21839,6 +22704,121 @@ function showInComponents(piece) {
     summary?.focus();
   });
   Globals.designer.switchTab("Components");
+}
+
+/** The board's voice, with a way to hear it
+ * @param {TreeBase} page */
+function voiceSetting(page) {
+  /** @param {TreeBase} node @returns {TreeBase | undefined} */
+  const find = (node) =>
+    node.className === "Speech" ? node : node.children.map(find).find(Boolean);
+  const speech = find(page);
+  const voice = speech?.["voiceURI"];
+  /** every Speech on the board, so the one that talks gets the voice too
+   * @param {TreeBase} node @returns {TreeBase[]} */
+  const all = (node) =>
+    node.className === "Speech" ? [node] : node.children.flatMap(all);
+  if (!(voice instanceof Voice)) return html``;
+  return html`<div class="piece-field board-voice">
+      <span>Voice</span>
+      <select
+        is="select-voice"
+        value=${voice.value}
+        @change=${(/** @type {Event} */ e) => {
+          const value = /** @type {HTMLSelectElement} */ (e.target).value;
+          for (const each of all(page)) each["voiceURI"].set(value);
+          speech?.update();
+        }}
+      >
+        <option value="" ?selected=${!voice.value}>The computer's voice</option>
+      </select>
+      <button
+        class="piece-action"
+        title="Hear the voice"
+        @click=${() => sayLikeButton({ label: "Hello, how are you?" })}
+      >
+        ▶
+      </button>
+    </div>
+    ${naturalVoices === false
+      ? html`<p class="piece-hint">
+          For voices that sound more like a person (Aria, Jenny, Guy…), open
+          this app in Microsoft Edge; they show up in this list there.
+        </p>`
+      : html``}
+    ${isEleven(voice.value) && elevenProblem
+      ? html`<p class="piece-hint voice-problem" role="status">⚠ ${elevenProblem}</p>`
+      : html``}
+    ${getElevenKey()
+      ? html``
+      : html`<p class="piece-hint">
+          More voices: paste a free ElevenLabs key in Content → Keys.
+        </p>`}`;
+}
+
+/** Whether this browser has Edge's natural voices, once known
+ * @type {boolean | null} */
+let naturalVoices = null;
+function checkNaturalVoices() {
+  hasNaturalVoices().then((has) => {
+    if (has === naturalVoices) return;
+    naturalVoices = has;
+    Globals.state?.update();
+  });
+}
+checkNaturalVoices();
+// online voices arrive after the computer's own
+speechSynthesis.addEventListener("voiceschanged", checkNaturalVoices);
+
+/** What a tapped word does to the message bar
+ * @param {TreeBase} grid */
+function messageBarSetting(grid) {
+  if (!canChooseMessageBar(grid)) return html``;
+  const mode = messageBarMode(grid);
+  const choices = [
+    ["add", "says it and adds it to the message bar"],
+    ["show", "says it, shows it, then clears it"],
+    ["say", "just says it"],
+  ];
+  return html`<label class="piece-field message-bar-setting">
+    <span>Tapping a word</span>
+    <select
+      @change=${(/** @type {Event} */ e) => {
+        const value = /** @type {HTMLSelectElement} */ (e.target).value;
+        setMessageBarMode(grid, /** @type {any} */ (value));
+        Globals.state.update();
+      }}
+    >
+      ${choices.map(
+        ([value, label]) =>
+          html`<option value=${value} ?selected=${mode === value}>${label}</option>`,
+      )}
+    </select>
+  </label>`;
+}
+
+/** How every word in a grid is said, like a whole tab of sarcasm
+ * @param {TreeBase} grid */
+function toneSetting(grid) {
+  const tone = grid["tone"];
+  if (!(tone instanceof String$1)) return html``;
+  return html`<label class="piece-field">
+    <span>Tone</span>
+    <select
+      title="How every word in this grid is said; one word can have its own (click its picture)"
+      @change=${(/** @type {Event} */ e) => {
+        tone.set(/** @type {HTMLSelectElement} */ (e.target).value);
+        grid.update();
+      }}
+    >
+      <option value="" ?selected=${!tone.value}>The tone buttons' choice</option>
+      ${Object.keys(Tones).map(
+        (name) => html`<option value=${name} ?selected=${tone.value === name}>
+          ${name}
+        </option>`,
+      )}
+    </select>
+  </label>`;
 }
 
 /** The colors offered for a piece: strong enough to tell pieces apart,
@@ -28777,6 +29757,53 @@ const steps = [
   {
     tab: "Layout",
     find: () =>
+      document.querySelector(".message-bar-setting") ||
+      document.querySelector("#tabs .panels"),
+    title: "What tapping a word does",
+    body:
+      "Click a word grid, then choose Tapping a word. “Adds it to the " +
+      "message bar” builds a sentence; “shows it, then clears it” puts " +
+      "the word in the message bar only while it is said; “just says it” " +
+      "leaves the message bar alone. Each grid can do something different.",
+  },
+  {
+    tab: "Layout",
+    find: () =>
+      document.querySelector("#UI .grid button.tone-chosen") ||
+      document.querySelector("#tabs .panels"),
+    title: "Tones: how words are said",
+    body:
+      "Add Tone buttons from a piece's + menu: tap Calm, Urgent, Angry or " +
+      "Sarcastic on the board, and the words after it are said that way " +
+      "until another tone is tapped. To make a whole grid one tone, like " +
+      "a tab of sarcasm, click the grid and choose its Tone.",
+  },
+  {
+    tab: "Layout",
+    find: () =>
+      document.querySelector("#UI .grid img") ||
+      document.querySelector("#UI .grid") ||
+      document.querySelector("#tabs .panels"),
+    title: "One word, said your way",
+    body:
+      "Click a word's picture to change just that word: give it its own " +
+      "Tone, or type how to Say it, like “riiiight” for “right”. Press ▶ " +
+      "to hear it; the button still shows the plain word.",
+  },
+  {
+    tab: "Layout",
+    find: () =>
+      document.querySelector(".board-voice") ||
+      document.querySelector("#tabs .panels"),
+    title: "The board's voice",
+    body:
+      "Choose the voice at the top of Layout and press ▶ to hear it. " +
+      "Microsoft Edge adds voices that sound more like a person (Aria, " +
+      "Jenny, Guy…).",
+  },
+  {
+    tab: "Layout",
+    find: () =>
       document.querySelector(".boards-bar") ||
       document.querySelector("#tabs .panels"),
     title: "More boards, if you want them",
@@ -28819,6 +29846,18 @@ const steps = [
     body:
       "Load your own images and sounds here, then drag a thumbnail onto " +
       "a button on the board to use it.",
+  },
+  {
+    tab: "Content",
+    find: () =>
+      document.querySelector(".voice-key") ||
+      document.querySelector("#tabs .panels"),
+    title: "More voices: ElevenLabs",
+    body:
+      "For natural voices that sound the same in every browser, and tones " +
+      "said with real feeling, paste a free ElevenLabs key under Keys, " +
+      "then pick an ElevenLabs voice in Layout. Everything " +
+      "said on the board is then sent to ElevenLabs to be spoken.",
   },
   {
     find: () => menuButton("File"),
