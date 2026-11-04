@@ -44,7 +44,7 @@ export function rule(origin, condition, updates) {
   };
 }
 
-/** @typedef {"message" | "grid" | "button" | "tabs" | "board"} PieceKind */
+/** @typedef {"message" | "grid" | "button" | "tabs" | "board" | "tones"} PieceKind */
 
 /** What the Add menu offers, in order
  * @type {{kind: PieceKind, label: string, icon: string, about: string}[]} */
@@ -79,10 +79,16 @@ export const pieceKinds = [
     icon: "📂",
     about: "A button that opens a new board, like a folder. Boards can open more boards.",
   },
+  {
+    kind: "tones",
+    label: "Tone buttons",
+    icon: "🎭",
+    about: "Calm, Urgent, Angry… Pick one, and the words after it are said that way.",
+  },
 ];
 
 /** How much room each kind of piece takes next to others to start with */
-const defaultScale = { message: 1, grid: 4, button: 1, tabs: 4, clear: 1 };
+const defaultScale = { message: 1, grid: 4, button: 1, tabs: 4, clear: 1, tones: 1 };
 
 /** Components a student can click on and change */
 const selectable = new Set([
@@ -115,7 +121,7 @@ export const visualClasses = new Set([
 export function pieceLabel(component) {
   switch (component.className) {
     case "Grid":
-      return "Word grid";
+      return isToneGrid(component) ? "Tone buttons" : "Word grid";
     case "Display":
       return "Message bar";
     case "Button":
@@ -242,6 +248,29 @@ function spec(kind) {
       };
     case "grid":
       return gridSpec();
+    case "tones": {
+      // a word grid of its own whose words set the tone ($Tone) rather
+      // than being said (setUp gives it that rule, addPiece the words)
+      const name = uniqueName(TONES);
+      return {
+        className: "Grid",
+        props: {
+          name,
+          rows: "1",
+          columns: String(toneWords.length),
+          fillItems: "true",
+          background: "white",
+          scale: String(defaultScale.tones),
+        },
+        children: [
+          {
+            className: "GridFilter",
+            props: { field: "#grid", operator: "equals", value: `'${name}'` },
+            children: [],
+          },
+        ],
+      };
+    }
     case "button":
       return {
         className: "Button",
@@ -302,6 +331,7 @@ export function addPiece(kind, anchor = null, side = "below") {
     }
   }
   setUp(allComponents(created));
+  if (kind === "tones") addToneWords(created);
   Globals.layout.update();
   // select the part a student would change next
   return created.className === "Stack" ? created.children[0] : created;
@@ -597,7 +627,9 @@ function setUp(added) {
     ["$Display", "add_word(#label)"],
   ]);
   for (const component of added) {
-    if (component.className === "Grid") {
+    if (component.className === "Grid" && isToneGrid(component)) {
+      addRule(component["name"].value, "", [["$Tone", "#label"]]);
+    } else if (component.className === "Grid") {
       addRule(component["name"].value, "", speakAndAdd);
     } else if (component.className === "Display") {
       const state = component["stateName"].value;
@@ -911,6 +943,82 @@ function ensureSquareLinks(grid) {
   actions.update();
 }
 
+/** A grid's rule that says its words (not the one for squares that open
+ * a board)
+ * @param {TreeBase} grid */
+function sayingRule(grid) {
+  const name = grid["name"].value;
+  return Globals.actions.children.find(
+    (r) =>
+      r["origin"].value === name &&
+      r.children.some(
+        (c) => c.className === "ActionUpdate" && c["stateName"].value === "$Speak",
+      ),
+  );
+}
+
+/** True when the grid says its words with the usual rule, so whether
+ * they go into the message bar can be chosen
+ * @param {TreeBase} grid */
+export function canChooseMessageBar(grid) {
+  return !!sayingRule(grid);
+}
+
+/** The state that, set to a message bar's state name, clears that bar
+ * once the word has been said (speech.js) */
+export const CLEAR_AFTER_SAYING = "$ClearAfterSaying";
+
+/** @typedef {"add" | "show" | "say"} MessageBarMode */
+
+/** What a word tapped in this grid does to the message bar: "add" builds
+ * a sentence, "show" shows the word and clears it once said, "say" leaves
+ * the bar alone
+ * @param {TreeBase} grid
+ * @returns {MessageBarMode} */
+export function messageBarMode(grid) {
+  const updates = (sayingRule(grid)?.children ?? []).filter(
+    (c) => c.className === "ActionUpdate",
+  );
+  if (updates.some((c) => c["stateName"].value === CLEAR_AFTER_SAYING)) return "show";
+  if (updates.some((c) => c["stateName"].value === "$Display")) return "add";
+  return "say";
+}
+
+/** Change what a grid's tapped words do to the message bar, by changing
+ * its rule: "add" sets $Display to add_word(#label), "show" sets it to
+ * the word alone and asks for it to be cleared once said, "say" leaves
+ * $Display out
+ * @param {TreeBase} grid
+ * @param {MessageBarMode} mode */
+export function setMessageBarMode(grid, mode) {
+  const saying = sayingRule(grid);
+  if (!saying || mode === messageBarMode(grid)) return;
+  for (const update of saying.children.filter(
+    (c) =>
+      c.className === "ActionUpdate" &&
+      ["$Display", CLEAR_AFTER_SAYING].includes(c["stateName"].value),
+  )) {
+    update.remove();
+  }
+  /** @type {[string, string][]} */
+  const updates =
+    mode === "add"
+      ? [["$Display", "add_word(#label)"]]
+      : mode === "show"
+        ? [
+            ["$Display", "#label"],
+            [CLEAR_AFTER_SAYING, "'$Display'"],
+          ]
+        : [];
+  for (const [stateName, newValue] of updates) {
+    TreeBase.fromObject(
+      { className: "ActionUpdate", props: { stateName, newValue }, children: [] },
+      saying,
+    );
+  }
+  Globals.actions.update();
+}
+
 /** Rename a board, and everything that opens it
  * @param {TreeBase} board
  * @param {string} label */
@@ -1032,4 +1140,43 @@ export function boardTree() {
   if (all[0]) visit(all[0], 0);
   for (const board of all) visit(board, 0);
   return result;
+}
+
+// ── Tone buttons: words that choose how the next words are said ─────────
+
+const TONES = "tones";
+
+/** The tone buttons' words; speech.js knows how each sounds */
+const toneWords = ["Normal", "Calm", "Urgent", "Angry", "Sarcastic"];
+
+/** True for a grid of tone buttons: its rule sets $Tone, or, before it
+ * has a rule, it is new and named for them
+ * @param {TreeBase} grid */
+export function isToneGrid(grid) {
+  const name = grid["name"].value;
+  const rule = Globals.actions.children.find((r) => r["origin"].value === name);
+  if (rule) {
+    return rule.children.some(
+      (c) => c.className === "ActionUpdate" && c["stateName"].value === "$Tone",
+    );
+  }
+  return new RegExp(`^${TONES}\\d*$`).test(name);
+}
+
+/** Fill new tone buttons with the tones, marked so they show which is
+ * picked (grid.js)
+ * @param {TreeBase} grid */
+async function addToneWords(grid) {
+  const { data } = Globals;
+  const name = grid["name"].value;
+  const words = toneWords.map((label) => ({
+    label,
+    grid: name,
+    sets: "tone",
+    sheetName: "sheet1",
+  }));
+  const rows = [...data.contentRows, ...words];
+  data.setContent(rows);
+  await db.write("content", rows);
+  Globals.state.update();
 }

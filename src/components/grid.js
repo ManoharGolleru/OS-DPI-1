@@ -9,6 +9,7 @@ import db from "app/db";
 import { fileOpen } from "browser-fs-access";
 import { findPictogram, isPictogram, pictureChoices } from "./pictograms";
 import { boards, setSquareLink, showBoard } from "./pieces";
+import { Tones, sayLikeButton } from "./speech";
 import "css/grid.css";
 
 /**
@@ -75,6 +76,9 @@ class Grid extends TreeBase {
   scale = new Props.Float(1);
   name = new Props.String("grid");
   background = new Props.Color("white");
+  tone = new Props.String("", {
+    title: "How every word here is said: Calm, Urgent, Angry or Sarcastic (empty for the tone buttons' choice)",
+  });
   buttonColor = new Props.String("", {
     title: 'The buttons\' color: empty for the grid\'s own color, "none" for plain buttons, or any color',
   });
@@ -369,6 +373,23 @@ class Grid extends TreeBase {
     Globals.state.update();
   }
 
+  /** Set or clear one field of a word, like how it is said
+   * @param {number} absIdx
+   * @param {string} field
+   * @param {string} value - "" clears it */
+  async setWordField(absIdx, field, value) {
+    const { data } = Globals;
+    const target = data.getMatchingRows(this.children, false)[absIdx];
+    const rows = [...data.contentRows];
+    const index = rows.indexOf(target);
+    if (index < 0 || String(target[field] ?? "") === value) return;
+    const { [field]: _old, ...rest } = target;
+    rows[index] = value ? { ...rest, [field]: value } : rest;
+    data.setContent(rows);
+    await db.write("content", rows);
+    Globals.state.update();
+  }
+
   /** The picture choices, floating by the word's square */
   picturePopover() {
     const pick = /** @type {NonNullable<Grid["_picturePick"]>} */ (this._picturePick);
@@ -389,10 +410,10 @@ class Grid extends TreeBase {
       class="picture-popover"
       style=${styleString(style)}
       role="dialog"
-      aria-label=${`Picture for ${pick.label}`}
+      aria-label=${`Settings for ${pick.label}`}
     >
       <div class="picture-popover-title">
-        <strong>Picture for “${pick.label}”</strong>
+        <strong>“${pick.label}”</strong>
         <button aria-label="Close" @click=${() => this.closePictures()}>✕</button>
       </div>
       <div class="picture-popover-choices">
@@ -447,6 +468,57 @@ class Grid extends TreeBase {
           <option value="+">opens a new board</option>
         </select>
       </label>
+      ${row && row.sets !== "tone"
+        ? html`<label class="picture-popover-link">
+              <span>Tone</span>
+              <select
+                @change=${(/** @type {Event} */ e) =>
+                  this.setWordField(
+                    pick.absIdx,
+                    "tone",
+                    /** @type {HTMLSelectElement} */ (e.target).value,
+                  )}
+              >
+                <option value="" ?selected=${!row.tone}>
+                  ${this.tone.value
+                    ? `the grid's (${this.tone.value})`
+                    : "the tone buttons' choice"}
+                </option>
+                ${Object.keys(Tones).map(
+                  (tone) => html`<option value=${tone} ?selected=${row.tone === tone}>
+                    ${tone}
+                  </option>`,
+                )}
+              </select>
+            </label>
+            <label class="picture-popover-link">
+              <span>Say it like</span>
+              <input
+                type="text"
+                placeholder=${String(row.label ?? "")}
+                .value=${String(row.say ?? "")}
+                @change=${(/** @type {Event} */ e) =>
+                  this.setWordField(
+                    pick.absIdx,
+                    "say",
+                    /** @type {HTMLInputElement} */ (e.target).value.trim(),
+                  )}
+              />
+              <button
+                title="Hear it"
+                aria-label="Hear it"
+                @click=${(/** @type {Event} */ e) => {
+                  // what is in the box now, even if not saved yet
+                  const box = /** @type {HTMLElement} */ (e.currentTarget)
+                    .previousElementSibling;
+                  const say = box instanceof HTMLInputElement ? box.value.trim() : "";
+                  sayLikeButton({ ...row, say, GridTone: this.tone.value });
+                }}
+              >
+                ▶
+              </button>
+            </label>`
+        : html``}
     </div>`;
   }
 
@@ -669,6 +741,9 @@ class Grid extends TreeBase {
     const absIdx = item._absIndex ?? -1;
     const isDraggable = hasContent && absIdx >= 0;
     const self = this;
+    // a tone button shows whether its tone is the one picked
+    const tone = String(Globals.state?.get("$Tone") || "Normal");
+    const chosen = item.sets === "tone" && item.label === tone;
 
     /** @type {Hole[]} */
     let content;
@@ -708,7 +783,10 @@ class Grid extends TreeBase {
         ...item,
         ComponentName: name,
         ComponentType: this.className,
+        GridTone: this.tone.value,
       }}
+      aria-pressed=${item.sets === "tone" ? String(chosen) : null}
+      class=${item.sets === "tone" && chosen ? "tone-chosen" : null}
       ?disabled=${!item.label && !item.symbol}
       title=${Globals.state?.get("editing") && absIdx >= 0
         ? "Click the word to change it, or its picture to choose another; double-click for a picture from your computer"

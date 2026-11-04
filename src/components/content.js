@@ -8,7 +8,7 @@ import pleaseWait from "./wait";
 import Globals from "app/globals";
 import { fileOpen } from "browser-fs-access";
 import { aiJSON, aiReady, aiKeyPhrase, AIError } from "./ai";
-import { aiSettings } from "./ai/settings";
+import { aiSettings, voiceSettings } from "./ai/settings";
 
 /** Depth-first search for a node with the given className
  * @param {any} node @param {string} cls */
@@ -635,7 +635,7 @@ export class Content extends DesignerPanel {
               ${this._aiStatus === "loading" ? "Generating…" : "✨ Generate"}
             </button>
 
-            ${aiSettings()}
+            <p class="ai-key-note">The AI key is under Keys, below.</p>
 
             ${this._aiStatus === "error"
               ? html`<p class="ai-error">⚠ ${this._aiError}</p>`
@@ -649,6 +649,15 @@ export class Content extends DesignerPanel {
               : html``}
           </div>
         </details>
+        </section>
+
+        <section class="content-section content-keys">
+        <h2>Keys</h2>
+        <p class="ai-key-note">
+          Free keys for the AI features and for more voices. They stay on
+          this device and are never saved in a design.
+        </p>
+        ${aiSettings()} ${voiceSettings()}
         </section>
 
         <section class="content-section">

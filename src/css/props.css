@@ -66,13 +66,19 @@ label.labeledInput {
   grid-column: 2 / -1;
 }
 
-/* Keep the color swatch right beside its input instead of at the far edge */
+/* Keep the color swatch right beside its input instead of at the far
+   edge: a plain row, since a grid column would take the input's default
+   width rather than the narrower one it is given */
 #designer label.labeledInput:not([hiddenLabel]):has(.swatch) {
-  grid-template-columns: var(--prop-label-width) auto 1fr;
+  display: flex;
+}
+
+#designer label.labeledInput:not([hiddenLabel]):has(.swatch) > .labelText {
+  flex: 0 0 var(--prop-label-width);
 }
 
 #designer label.labeledInput:not([hiddenLabel]) .swatch {
-  justify-self: start;
+  flex: none;
 }
 
 label.labeledInput[hiddenLabel] span.labelText {

@@ -6,6 +6,8 @@ import "css/layout.css";
 import Globals from "app/globals";
 import { TabPanel } from "./tabcontrol";
 import { StackContainer } from "./stack";
+import { Tones, sayLikeButton, hasNaturalVoices } from "./speech";
+import { elevenProblem, getElevenKey, isEleven } from "./elevenlabs";
 import { callAfterRender } from "app/render";
 import { ModalDialog } from "./modal-dialog";
 import { clearCues } from "./access/pattern";
@@ -35,6 +37,10 @@ import {
   addLinkedBoard,
   renameBoard,
   renameGrid,
+  isToneGrid,
+  canChooseMessageBar,
+  messageBarMode,
+  setMessageBarMode,
   deleteBoard,
   linkTarget,
   setLinkTarget,
@@ -179,7 +185,7 @@ export class Layout extends DesignerPanel {
         </button>`;
     }
     return html`<div class="layout-simple">
-      ${outline}${empty ? html`` : this.boardsBar()}${body}
+      ${outline}${empty ? html`` : html`${this.boardsBar()}${voiceSetting(page)}`}${body}
     </div>`;
   }
 
@@ -557,7 +563,14 @@ export class Layout extends DesignerPanel {
               set: (/** @type {string} */ value) => renameGrid(piece, value),
             })}
           </div>
-          ${howToFill()}`;
+          ${isToneGrid(piece)
+            ? html`<p class="piece-hint">
+                Tap a tone on the board, and the words after it are said that
+                way until another is tapped. The tones are Normal, Calm,
+                Urgent, Angry and Sarcastic.
+              </p>`
+            : html`${toneSetting(piece)} ${messageBarSetting(piece)}
+              ${howToFill()}`}`;
       case "Display": {
         const size = piece["fontSize"];
         const sizes = [
@@ -1242,6 +1255,121 @@ function showInComponents(piece) {
     summary?.focus();
   });
   Globals.designer.switchTab("Components");
+}
+
+/** The board's voice, with a way to hear it
+ * @param {TreeBase} page */
+function voiceSetting(page) {
+  /** @param {TreeBase} node @returns {TreeBase | undefined} */
+  const find = (node) =>
+    node.className === "Speech" ? node : node.children.map(find).find(Boolean);
+  const speech = find(page);
+  const voice = speech?.["voiceURI"];
+  /** every Speech on the board, so the one that talks gets the voice too
+   * @param {TreeBase} node @returns {TreeBase[]} */
+  const all = (node) =>
+    node.className === "Speech" ? [node] : node.children.flatMap(all);
+  if (!(voice instanceof Props.Voice)) return html``;
+  return html`<div class="piece-field board-voice">
+      <span>Voice</span>
+      <select
+        is="select-voice"
+        value=${voice.value}
+        @change=${(/** @type {Event} */ e) => {
+          const value = /** @type {HTMLSelectElement} */ (e.target).value;
+          for (const each of all(page)) each["voiceURI"].set(value);
+          speech?.update();
+        }}
+      >
+        <option value="" ?selected=${!voice.value}>The computer's voice</option>
+      </select>
+      <button
+        class="piece-action"
+        title="Hear the voice"
+        @click=${() => sayLikeButton({ label: "Hello, how are you?" })}
+      >
+        ▶
+      </button>
+    </div>
+    ${naturalVoices === false
+      ? html`<p class="piece-hint">
+          For voices that sound more like a person (Aria, Jenny, Guy…), open
+          this app in Microsoft Edge; they show up in this list there.
+        </p>`
+      : html``}
+    ${isEleven(voice.value) && elevenProblem
+      ? html`<p class="piece-hint voice-problem" role="status">⚠ ${elevenProblem}</p>`
+      : html``}
+    ${getElevenKey()
+      ? html``
+      : html`<p class="piece-hint">
+          More voices: paste a free ElevenLabs key in Content → Keys.
+        </p>`}`;
+}
+
+/** Whether this browser has Edge's natural voices, once known
+ * @type {boolean | null} */
+let naturalVoices = null;
+function checkNaturalVoices() {
+  hasNaturalVoices().then((has) => {
+    if (has === naturalVoices) return;
+    naturalVoices = has;
+    Globals.state?.update();
+  });
+}
+checkNaturalVoices();
+// online voices arrive after the computer's own
+speechSynthesis.addEventListener("voiceschanged", checkNaturalVoices);
+
+/** What a tapped word does to the message bar
+ * @param {TreeBase} grid */
+function messageBarSetting(grid) {
+  if (!canChooseMessageBar(grid)) return html``;
+  const mode = messageBarMode(grid);
+  const choices = [
+    ["add", "says it and adds it to the message bar"],
+    ["show", "says it, shows it, then clears it"],
+    ["say", "just says it"],
+  ];
+  return html`<label class="piece-field message-bar-setting">
+    <span>Tapping a word</span>
+    <select
+      @change=${(/** @type {Event} */ e) => {
+        const value = /** @type {HTMLSelectElement} */ (e.target).value;
+        setMessageBarMode(grid, /** @type {any} */ (value));
+        Globals.state.update();
+      }}
+    >
+      ${choices.map(
+        ([value, label]) =>
+          html`<option value=${value} ?selected=${mode === value}>${label}</option>`,
+      )}
+    </select>
+  </label>`;
+}
+
+/** How every word in a grid is said, like a whole tab of sarcasm
+ * @param {TreeBase} grid */
+function toneSetting(grid) {
+  const tone = grid["tone"];
+  if (!(tone instanceof Props.String)) return html``;
+  return html`<label class="piece-field">
+    <span>Tone</span>
+    <select
+      title="How every word in this grid is said; one word can have its own (click its picture)"
+      @change=${(/** @type {Event} */ e) => {
+        tone.set(/** @type {HTMLSelectElement} */ (e.target).value);
+        grid.update();
+      }}
+    >
+      <option value="" ?selected=${!tone.value}>The tone buttons' choice</option>
+      ${Object.keys(Tones).map(
+        (name) => html`<option value=${name} ?selected=${tone.value === name}>
+          ${name}
+        </option>`,
+      )}
+    </select>
+  </label>`;
 }
 
 /** The colors offered for a piece: strong enough to tell pieces apart,

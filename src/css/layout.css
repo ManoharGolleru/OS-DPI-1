@@ -204,6 +204,18 @@ fieldset.piece-field legend {
   align-items: stretch;
 }
 
+/* the board's voice, under the boards */
+.board-voice {
+  padding-bottom: 0.6em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* why the chosen voice isn't the one speaking */
+.voice-problem {
+  color: hsl(0 65% 40%);
+  font-weight: 600;
+}
+
 /* color choices for a piece: one clickable swatch per color */
 .piece-colors {
   display: flex;

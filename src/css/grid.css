@@ -457,7 +457,21 @@ button.button:has(.board-link-badge) {
   border-top: 1px solid var(--border-color);
 }
 
-.picture-popover-link select {
+.picture-popover-link select,
+.picture-popover-link input {
   flex: 1;
   min-width: 0;
+}
+
+/* the labels line up, so the boxes do too */
+.picture-popover-link > span {
+  min-width: 5.5em;
+}
+
+/* ── Tone buttons: the tone picked stands out ── */
+.grid button.tone-chosen,
+body:not(.designing) .grid button.tone-chosen:hover {
+  outline: 4px solid var(--brand);
+  outline-offset: -4px;
+  font-weight: 700;
 }

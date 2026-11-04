@@ -95,6 +95,53 @@ const steps = [
   {
     tab: "Layout",
     find: () =>
+      document.querySelector(".message-bar-setting") ||
+      document.querySelector("#tabs .panels"),
+    title: "What tapping a word does",
+    body:
+      "Click a word grid, then choose Tapping a word. “Adds it to the " +
+      "message bar” builds a sentence; “shows it, then clears it” puts " +
+      "the word in the message bar only while it is said; “just says it” " +
+      "leaves the message bar alone. Each grid can do something different.",
+  },
+  {
+    tab: "Layout",
+    find: () =>
+      document.querySelector("#UI .grid button.tone-chosen") ||
+      document.querySelector("#tabs .panels"),
+    title: "Tones: how words are said",
+    body:
+      "Add Tone buttons from a piece's + menu: tap Calm, Urgent, Angry or " +
+      "Sarcastic on the board, and the words after it are said that way " +
+      "until another tone is tapped. To make a whole grid one tone, like " +
+      "a tab of sarcasm, click the grid and choose its Tone.",
+  },
+  {
+    tab: "Layout",
+    find: () =>
+      document.querySelector("#UI .grid img") ||
+      document.querySelector("#UI .grid") ||
+      document.querySelector("#tabs .panels"),
+    title: "One word, said your way",
+    body:
+      "Click a word's picture to change just that word: give it its own " +
+      "Tone, or type how to Say it, like “riiiight” for “right”. Press ▶ " +
+      "to hear it; the button still shows the plain word.",
+  },
+  {
+    tab: "Layout",
+    find: () =>
+      document.querySelector(".board-voice") ||
+      document.querySelector("#tabs .panels"),
+    title: "The board's voice",
+    body:
+      "Choose the voice at the top of Layout and press ▶ to hear it. " +
+      "Microsoft Edge adds voices that sound more like a person (Aria, " +
+      "Jenny, Guy…).",
+  },
+  {
+    tab: "Layout",
+    find: () =>
       document.querySelector(".boards-bar") ||
       document.querySelector("#tabs .panels"),
     title: "More boards, if you want them",
@@ -137,6 +184,18 @@ const steps = [
     body:
       "Load your own images and sounds here, then drag a thumbnail onto " +
       "a button on the board to use it.",
+  },
+  {
+    tab: "Content",
+    find: () =>
+      document.querySelector(".voice-key") ||
+      document.querySelector("#tabs .panels"),
+    title: "More voices: ElevenLabs",
+    body:
+      "For natural voices that sound the same in every browser, and tones " +
+      "said with real feeling, paste a free ElevenLabs key under Keys, " +
+      "then pick an ElevenLabs voice in Layout. Everything " +
+      "said on the board is then sent to ElevenLabs to be spoken.",
   },
   {
     find: () => menuButton("File"),

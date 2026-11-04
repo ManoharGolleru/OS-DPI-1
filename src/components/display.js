@@ -13,7 +13,6 @@ class Display extends TreeBase {
   fontSize = new Props.Float(2);
   scale = new Props.Float(1);
   highlightWords = new Props.Boolean(false);
-  clearAfterSpeaking = new Props.Boolean(false);
   showHistory = new Props.Boolean(false);
 
   /** @type {HTMLDivElement | null} */
@@ -202,9 +201,6 @@ class Display extends TreeBase {
       }
     } else if (event.type == "end") {
       selection.empty();
-      if (this.clearAfterSpeaking.value) {
-        Globals.state.update({ [this.stateName.value]: "" });
-      }
     }
   }
 
