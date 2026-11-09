@@ -1,0 +1,44 @@
+name: AI authoring checks
+on:
+  push:
+    branches: [main, feature/ai-authoring-redesign]
+    paths: ['src/**', 'tests/**', '.github/workflows/ai-authoring-checks.yml']
+  pull_request:
+    paths: ['src/**', 'tests/**', '.github/workflows/ai-authoring-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ai-authoring-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install existing application dependencies
+        working-directory: src
+        run: npm install
+      - name: Native document transaction tests
+        run: node --test tests/authoring.test.mjs
+      - name: Build application
+        working-directory: src
+        run: npm run build
+      - name: Install browser test tools
+        working-directory: src
+        run: |
+          npm install --no-save --package-lock=false @playwright/test@1.65.0
+          npx playwright install --with-deps chromium
+      - name: Native browser and archive tests (simulated model replies)
+        working-directory: src
+        run: npx playwright test --config=tests/playwright.config.js
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: authoring-browser-diagnostics
+          path: src/test-results
+          retention-days: 1

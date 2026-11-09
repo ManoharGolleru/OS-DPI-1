@@ -1,5 +1,5 @@
 import "@ungap/custom-elements";
-import { render } from "uhtml";
+import { render, html } from "uhtml";
 import { Messages } from "./components/errors";
 import { Data } from "./data";
 import { State } from "./state";
@@ -166,6 +166,11 @@ export async function start() {
     // the real update begins here
     const editing = Globals.state.get("editing");
     document.body.classList.toggle("designing", editing);
+    const returnControl = document.getElementById("return-to-edit");
+    if (returnControl) render(returnControl, !editing && !new URLSearchParams(location.search).has("preview")
+      ? html`<button type="button" @click=${() => Globals.state.update({ editing: true })}>Back to editing</button>`
+      : html``);
+
     // Apply per-board font size to the canvas area
     const uiDiv = document.getElementById("UI");
     if (uiDiv) {

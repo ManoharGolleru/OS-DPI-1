@@ -25,7 +25,9 @@ class Display extends TreeBase {
 
   template() {
     const { state } = Globals;
-    let value = state.get(this.stateName.value) || "";
+    // State also holds numeric scores, timers and boolean indicators.
+    // Keep zero visible, and give the text formatters a string.
+    const value = String(state.get(this.stateName.value) ?? "");
 
     // Track history: add non-empty values when they change
     if (value && (this._history.length === 0 || this._history[0] !== value)) {
