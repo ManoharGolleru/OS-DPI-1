@@ -1,6 +1,6 @@
 import {aiToolTurn} from "./authoring-transport";
 import {examples, keyboardRecipe, exercise} from "./authoring-native";
-import {SECTIONS, walk} from "./authoring-document";
+import {SECTIONS, walk, presentationReview} from "./authoring-document";
 
 export const MODELS = [["openai/gpt-oss-120b","GPT-OSS 120B"],["qwen/qwen3.8-27b","Qwen 3.8 27B"]];
 const obj = (properties,required=[]) => ({type:"object",properties,required,additionalProperties:false});
@@ -81,6 +81,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
   if(!MODELS.some(([id])=>id===model))throw new Error("Select a supported Groq authoring model.");
   const transcript=[], audit=[], usage={total_tokens:0,calls:0};
   let failures=0, lastRate=null, waited=0;
+  const requiresSurface=!presentationReview(session.design,"",{requireVisible:true}).ok;
   for(let round=0;round<8;round++) {
     if(signal?.aborted)throw new DOMException("Cancelled","AbortError");
     const known=["Page","Stack","Grid","GridFilter","Button","Display","Speech","Action","ActionUpdate"];
@@ -96,7 +97,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     onProgress(round?"Checking and completing the requested native edits…":"Planning the interface with Groq…");
     let response;
     try {
-      response=await turn({model,messages,tools:TOOLS,signal,maxTokens:1800});usage.calls++;
+      response=await turn({model,messages,tools:TOOLS,signal,maxTokens:2000,toolChoice:"required"});usage.calls++;
     }catch(e){
       const delay=seconds(e.retryAfter || e.rate?.reset || "") || Number(/try again in ([0-9.]+)s/i.exec(e.message)?.[1]);
       if(e.kind==="rate-limit" && delay>0 && delay<=65 && waited+delay<=130){onProgress(`Groq rate limit: resuming in ${Math.ceil(delay)}s.`);await wait((delay+.2)*1000,signal);waited+=delay;lastRate=null;round--;continue;}
@@ -107,8 +108,14 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     const message=response.message;
     const calls=message.tool_calls || [];
     if(!calls.length){
-      if(session.changes.length && failures++<1){transcript.push([message,{role:"user",content:"Use check and finish to submit the staged changes. Do not repeat completed edits."}]);continue;}
-      return {question:message.content || "Please describe the interface and the controls it needs.",usage,audit};
+      // A model's prose claim of completion is NOT a completed edit.
+      if(failures++<1){
+        transcript.push([message,{role:"user",content:session.changes.length
+          ? "The board is not applied. Call check and then finish with your staged edits."
+          : "No changes were made. Use inspect, edit or recipe first. Then check and finish. Do not describe work you have not performed."}]);
+        continue;
+      }
+      throw new Error("Groq returned an explanation rather than interface edits. No new board was created. Please retry a smaller request.");
     }
     const group=[message];
     for(const call of calls) {
@@ -129,11 +136,20 @@ export async function authorInterface({session,request,selected=null,model=MODEL
           result={ok:true,keyboard:inserted.keyboard,controls:inserted.controls,keys:inserted.keys,pending:inserted.pending};
         } else if(name==="check")result={...session.check(),interactions:exercise(session,args.tests || [])};
         else if(name==="finish") {
-          if(args.question)return {question:args.question,usage,audit};
+          if(args.question) {
+            const question=String(args.question).trim();
+            if(!question.endsWith("?"))result={ok:false,error:"Use question only to ask for essential missing input; never report completion without edits."};
+            else return {question,usage,audit};
+          } else {
           const checked=session.check();
           if(checked.errors.length)result={ok:false,...checked,instruction:"Correct these specific native references/properties, then finish again."};
           else if(!session.changes.length)result={ok:false,error:"No design edits were made. Do not claim the request is complete."};
-          else return {design:session.snapshot(),summary:String(args.summary||"Updated native interface").slice(0,1500),title:String(args.title||"AI interface").slice(0,80),checked,usage,audit};
+          else {
+            const presentation=presentationReview(session.design,request,{requireVisible:requiresSurface});
+            if(!presentation.ok)result={ok:false,errors:presentation.errors,instruction:"The draft does not fulfill the request and will not appear as complete. Add the missing visible native UI and its actions, then call check and finish again."};
+            else return {design:session.snapshot(),summary:String(args.summary||"Updated native interface").slice(0,1500),title:String(args.title||"AI interface").slice(0,80),checked,presentation:presentation.summary,usage,audit};
+          }
+          }
         }else throw new Error(`Unknown local tool ${name}.`);
         audit.push({tool:name,ok:result?.ok!==false && !result?.errors?.length});
       }catch(e){result={ok:false,error:e.message};audit.push({tool:name,ok:false});}

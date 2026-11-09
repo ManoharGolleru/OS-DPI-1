@@ -16,6 +16,51 @@ function clean(value) {
 }
 export const node = (className, props = {}, children = []) => ({className,props,children});
 
+/** Minimum observable output checks. A valid JSON tree is not necessarily a
+ * usable board: content rows without a filtered Grid render nothing. This
+ * checks the native document, not an AI-generated self-description.
+ */
+export function presentationReview(design, request="", {requireVisible=true}={}) {
+  const page=design?.layout?.children?.[0];
+  const errors=[];
+  if(!page || page.className!=="Page") return {ok:false,errors:["The design has no Page to preview."],summary:{controls:0,letters:0}};
+  const layout=walk(page);
+  const buttons=layout.filter(n=>n.className==="Button" && (n.props?.label || n.props?.symbol));
+  const grids=layout.filter(n=>n.className==="Grid");
+  const populatedGrids=grids.filter(grid=>{
+    const filters=(grid.children||[]).filter(n=>n.className==="GridFilter" && n.props?.field?.startsWith("#"));
+    return (design.content||[]).some(row=>filters.every(filter=>{
+      if(filter.props.operator!=="equals") return true;
+      const field=filter.props.field.slice(1);
+      const expected=String(filter.props.value||"").replace(/^['"]|['"]$/g,"");
+      return String(row[field]??"")===expected;
+    }));
+  });
+  const displays=layout.filter(n=>n.className==="Display");
+  const others=layout.filter(n=>["VSD","Indicator","Prediction","Radio"].includes(n.className));
+  const controls=buttons.length+populatedGrids.length+others.length;
+  if(requireVisible && !controls) errors.push("The draft has no visible, populated controls. Content rows need a displayed Grid, or add buttons/visual components to the Page before finishing.");
+  const keyboard=/\bqwerty\b/i.test(request) && /\bkeyboard\b/i.test(request);
+  if(keyboard) {
+    const rows=(design.content||[]).filter(r=>/^[a-z]$/i.test(String(r.label||""))).map(r=>r.label.toUpperCase());
+    const keys=rows.length?rows:buttons.filter(b=>/^[a-z]$/i.test(String(b.props.label||""))).map(b=>b.props.label.toUpperCase());
+    if(keys.join("")!=="QWERTYUIOPASDFGHJKLZXCVBNM") errors.push("The requested QWERTY keyboard needs exactly 26 keys, in QWERTY, ASDFGHJKL, ZXCVBNM order.");
+    if(/\b(display|message)\b/i.test(request) && !displays.some(n=>(n.props?.stateName||"$Display")==="$Display")) errors.push("The requested keyboard message display is missing.");
+    const updates=walk(design.actions||{}).filter(n=>n.className==="ActionUpdate");
+    if(!updates.some(n=>/\badd_letter\s*\(/.test(n.props?.newValue||""))) errors.push("The keyboard keys are missing a native add_letter action.");
+    const linked=(label,state)=>{
+      const matching=buttons.filter(b=>String(b.props.label).toLowerCase()===label.toLowerCase());
+      const origins=new Set(matching.map(b=>b.props.name));
+      return (design.actions?.children||[]).some(a=>origins.has(a.props.origin) && walk(a).some(n=>n.className==="ActionUpdate" && n.props.stateName===state));
+    };
+    if(/\bspeak\b/i.test(request) && !linked("Speak","$Speak")) errors.push("The requested Speak button is missing its speech action.");
+    if(/\bclear\b/i.test(request) && !linked("Clear","$Display")) errors.push("The requested Clear button is missing its display action.");
+    if(/\bbackspace\b/i.test(request) && !buttons.some(b=>/backspace/i.test(b.props.label||""))) errors.push("The requested Backspace button is missing.");
+  }
+  return {ok:!errors.length,errors,summary:{controls,buttons:buttons.length,populatedGrids:populatedGrids.length,displays:displays.length,letters:(design.content||[]).filter(r=>/^[a-z]$/i.test(r.label||"")).length}};
+}
+
+
 /** Stable references last for the entire model request, including moves and edits. */
 export class AuthoringDocument {
   constructor(design, catalog, {expressionCheck = () => null, mediaNames = []} = {}) {

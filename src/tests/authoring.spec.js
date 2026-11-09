@@ -103,7 +103,7 @@ test('all native schema classes, selection and stable references are exposed',as
 });
 
 test('invalid edit is corrected internally without manual repair',async({page})=>{
-  const {errors,requests}=await setup(page,[['edit',{operations:[{op:'update',target:'page',props:{invented:1}}]}],['recipe',{name:'keyboard'}],['finish',{summary:'Keyboard completed.'}]]);
+  const {errors,requests}=await setup(page,[['edit',{operations:[{op:'update',target:'page',props:{invented:1}}]}],['recipe',{name:'keyboard',backspace:true}],['finish',{summary:'Keyboard completed.'}]]);
   await generate(page);
   expect(requests).toHaveLength(3);
   expect(requests[1].messages.some(m=>m.role==='tool'&&m.content.includes('Unknown Page property'))).toBe(true);
@@ -190,7 +190,7 @@ test('malformed and traversal archives leave storage untouched',async({page})=>{
 test('new external service connections require consent before applying',async({page})=>{
   const {errors}=await setup(page,[['inspect',{target:'method'}],async route=>{
     const target=await page.evaluate(()=>fixture.documentSession(fixture.captureNative()).design.method.children[0]._ref);
-    await route.fulfill({json:toolReply('edit',{operations:[{op:'insert',parent:target,node:{className:'SocketHandler',props:{URL:'wss://example.invalid/socket'}}}]})});
+    await route.fulfill({json:toolReply('edit',{operations:[{op:'insert',parent:target,node:{className:'SocketHandler',props:{URL:'wss://example.invalid/socket'}}},{op:'insert',parent:'page',node:{className:'Button',props:{name:'listen',label:'Listen'}}}]})});
   },['finish',{summary:'Added an external input connection.'}]]);
   await generate(page,'Add this external input connection');
   await expect(page.getByText('Review before applying')).toBeVisible();
@@ -235,5 +235,74 @@ test('native dwell, scanning and cues remain editable, rather than replaced by t
   expect(data.errors).toEqual([]);await buttons(page);
   await page.locator('#UI').getByRole('button',{name:'h',exact:true}).hover();
   await expect.poll(()=>page.evaluate(()=>fixture.Globals.state.get('$Display'))).toBe('h');
+  expect(errors).toEqual([]);
+});
+
+test('plain model prose cannot claim a finished board without tool calls',async({page})=>{
+  const plain=async(route)=>route.fulfill({json:{choices:[{finish_reason:'stop',message:{role:'assistant',content:'I created the keyboard and wired all its buttons.'}}],usage:{total_tokens:40}}});
+  const {errors,requests}=await setup(page,[plain,plain]);
+  await page.getByTestId('author-request').fill('Make a typing board.');
+  await page.getByTestId('author-run').click();
+  await page.waitForFunction(()=>!fixture.panel.busy);
+  await expect(page.getByTestId('author-error')).toContainText('explanation rather than interface edits');
+  expect(requests.length).toBe(2);
+  expect(requests.every(r=>r.tool_choice==='required')).toBe(true);
+  expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
+  expect(await page.evaluate(()=>fixture.Globals.layout.children[0].children.length)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('content-only generation does not report success with empty Preview',async({page})=>{
+  const {errors,requests}=await setup(page,[
+    ['edit',{operations:[{op:'insert',parent:'content',labels:['Water','Help']}]}],
+    ['finish',{title:'Finished board',summary:'Created a communication board.'}],
+    ['recipe',{name:'keyboard',backspace:true}],
+    ['finish',{title:'Typing board',summary:'Built a native QWERTY keyboard with controls.'}],
+  ]);
+  await generate(page,'Make a communication board with some buttons.');
+  expect(requests.length).toBe(4);
+  const feedback=requests[2].messages.filter(m=>m.role==='tool').map(m=>m.content).join(' ');
+  expect(feedback).toContain('no visible, populated controls');
+  expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(28);
+  expect(await page.locator('#UI button').count()).toBeGreaterThan(26);
+  expect(errors).toEqual([]);
+});
+
+test('incomplete QWERTY output requires repair before finish is accepted',async({page})=>{
+  const {errors,requests}=await setup(page,[
+    ['edit',{operations:[{op:'insert',parent:'page',node:{className:'Button',props:{label:'A',name:'a'}}}]}],
+    ['finish',{title:'Keyboard',summary:'Finished full keyboard.'}],
+    ['recipe',{name:'keyboard',backspace:true}],
+    ['finish',{title:'Keyboard',summary:'Finished full keyboard.'}],
+  ]);
+  await generate(page);
+  const feedback=requests[2].messages.filter(m=>m.role==='tool').map(m=>m.content).join(' ');
+  expect(feedback).toContain('26 keys');
+  expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(26);
+  expect(errors).toEqual([]);
+});
+
+test('normal OS-DPI editor displays the accepted keyboard in its actual Preview',async({page})=>{
+  const errors=[],requests=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  const replies=[['recipe',{name:'keyboard',backspace:true}],['finish',{title:'Class keyboard',summary:'Created the keyboard.'}]];
+  await page.route('https://api.groq.com/**',async route=>{
+    requests.push(route.request().postDataJSON());
+    const next=replies.shift();
+    await route.fulfill(next?{json:toolReply(next[0],next[1],`live${requests.length}`)}:{status:500,json:{error:{message:'Unexpected request'}}});
+  });
+  await page.addInitScript(()=>{localStorage.setItem('osdpi-open-ai-generator','1');localStorage.setItem('os-dpi-groq-key','gsk_fake_authoring_test_key');});
+  await page.goto('/OS-DPI-1/#class-keyboard', {waitUntil:'domcontentloaded'});
+  await expect(page.getByTestId('author-run')).toBeVisible({timeout:20000});
+  await page.getByTestId('author-mode').selectOption('new');
+  await page.getByTestId('author-request').fill('Create a QWERTY keyboard with a display, Speak, Clear and Backspace.');
+  await page.getByTestId('author-run').click();
+  await expect.poll(()=>page.locator('#UI button').count()).toBeGreaterThan(26);
+  expect(requests).toHaveLength(2);
+  await page.getByTestId('author-preview').click();
+  await expect(page.locator('#UI').getByRole('button',{name:'h',exact:true})).toBeVisible({timeout:15000});
+  await page.locator('#UI').getByRole('button',{name:'h',exact:true}).click();
+  await page.locator('#UI').getByRole('button',{name:'i',exact:true}).click();
+  await expect(page.locator('#UI')).toContainText('hi');
   expect(errors).toEqual([]);
 });

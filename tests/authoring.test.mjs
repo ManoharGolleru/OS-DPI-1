@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {AuthoringDocument,walk,node} from '../src/components/ai/authoring-document.js';
+import {AuthoringDocument,walk,node,presentationReview} from '../src/components/ai/authoring-document.js';
 const json=name=>JSON.parse(readFileSync(new URL(name,import.meta.url),'utf8'));
 const catalog=json('./native-catalog.json'), empty=json('./native-empty.json');
 const session=()=>new AuthoringDocument(empty,catalog);
@@ -74,4 +74,23 @@ test('missing uploaded media is an explicit reference error',()=>{
 test('pre-existing diagnostics do not conceal a new error',()=>{
  const base=structuredClone(empty);base.layout.props.unknown=1;const s=new AuthoringDocument(base,catalog);
  assert.throws(()=>s.edit([{op:'update',target:'page',props:{anotherUnknown:2}}]));
+});
+
+test('content rows without a displayed grid must not count as a finished board',()=>{
+ const s=session();s.edit([{op:'insert',parent:'content',labels:['Hello','Water']}]);
+ assert.deepEqual(s.check().errors,[]); // Valid structure, but empty Preview
+ const review=presentationReview(s.snapshot(),'Create a communication board');
+ assert.equal(review.ok,false);
+ assert.match(review.errors.join(' '),/no visible, populated controls/);
+});
+test('a displayed populated native grid passes the generic presentation check',()=>{
+ const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Grid',props:{name:'words',rows:1,columns:2},children:[{className:'GridFilter',props:{field:'#grid',operator:'equals',value:"'words'"}}]}},{op:'insert',parent:'content',labels:['Hello','Water'],defaults:{grid:'words'}}]);
+ assert.equal(presentationReview(s.snapshot(),'Create a communication board').ok,true);
+});
+test('a visible but incomplete QWERTY keyboard is not a valid completion',()=>{
+ const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{name:'a',label:'a'}}}]);
+ const review=presentationReview(s.snapshot(),'Create a QWERTY keyboard with display, Speak, Clear and Backspace.');
+ assert.equal(review.ok,false);
+ assert.match(review.errors.join(' '),/26 keys/);
+ assert.match(review.errors.join(' '),/Speak button/);
 });
