@@ -103,7 +103,7 @@ test('all native schema classes, selection and stable references are exposed',as
 });
 
 test('invalid edit is corrected internally without manual repair',async({page})=>{
-  const {errors,requests}=await setup(page,[['edit',{operations:[{op:'update',target:'page',props:{invented:1}}]}],['recipe',{name:'keyboard'}],['finish',{summary:'Keyboard completed.'}]]);
+  const {errors,requests}=await setup(page,[['edit',{operations:[{op:'update',target:'page',props:{invented:1}}]}],['recipe',{name:'keyboard',backspace:true}],['finish',{summary:'Keyboard completed.'}]]);
   await generate(page);
   expect(requests).toHaveLength(3);
   expect(requests[1].messages.some(m=>m.role==='tool'&&m.content.includes('Unknown Page property'))).toBe(true);
@@ -190,7 +190,7 @@ test('malformed and traversal archives leave storage untouched',async({page})=>{
 test('new external service connections require consent before applying',async({page})=>{
   const {errors}=await setup(page,[['inspect',{target:'method'}],async route=>{
     const target=await page.evaluate(()=>fixture.documentSession(fixture.captureNative()).design.method.children[0]._ref);
-    await route.fulfill({json:toolReply('edit',{operations:[{op:'insert',parent:target,node:{className:'SocketHandler',props:{URL:'wss://example.invalid/socket'}}}]})});
+    await route.fulfill({json:toolReply('edit',{operations:[{op:'insert',parent:target,node:{className:'SocketHandler',props:{URL:'wss://example.invalid/socket'}}},{op:'insert',parent:'page',node:{className:'Button',props:{name:'listen',label:'Listen'}}}]})});
   },['finish',{summary:'Added an external input connection.'}]]);
   await generate(page,'Add this external input connection');
   await expect(page.getByText('Review before applying')).toBeVisible();
@@ -297,6 +297,15 @@ test('normal OS-DPI editor displays the accepted keyboard in its actual Preview'
   await page.getByTestId('author-mode').selectOption('new');
   await page.getByTestId('author-request').fill('Create a QWERTY keyboard with a display, Speak, Clear and Backspace.');
   await page.getByTestId('author-run').click();
+  await page.waitForTimeout(600);
+  console.log('REAL-EDITOR-DIAGNOSTICS',JSON.stringify(await page.evaluate(()=>({
+    href:location.href,ui:document.querySelector('#UI')?.innerText?.slice(0,220),
+    buttons:document.querySelector('#UI')?.querySelectorAll('button')?.length,
+    status:document.querySelector('[data-testid="author-status"]')?.textContent,
+    error:document.querySelector('[data-testid="author-error"]')?.textContent,
+    panel:document.querySelector('[data-testid="author-run"]')?.textContent,
+    body:document.body.className,
+  }))),errors,requests.length);
   await expect(page.locator('#UI').getByRole('button',{name:'h',exact:true})).toBeVisible({timeout:15000});
   expect(requests).toHaveLength(2);
   await page.getByTestId('author-preview').click();
