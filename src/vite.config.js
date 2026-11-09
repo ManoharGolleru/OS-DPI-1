@@ -15,7 +15,7 @@ const fullReloadAlways = {
 };
 
 export default defineConfig(({ command }) => ({
-  base: "/OS-DPI/",
+  base: "/OS-DPI-1/",
   resolve: {
     alias: {
       components: path.resolve("./components"),
