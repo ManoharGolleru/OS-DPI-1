@@ -136,7 +136,8 @@
 
 /**
  * @typedef {Object} EvalContext
- * @property {{[key: string]: string}} [states]
+ * @property {{[key: string]: any}} [states]
+ * @property {boolean} [isolated] - use only supplied state and disallow live-effect functions
  * @property {{[key: string]: string} | DOMStringMap } [data]
  * @property {{[key: string]: function}} [Functions]
  */

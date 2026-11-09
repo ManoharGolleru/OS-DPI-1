@@ -1,9 +1,11 @@
 import {html} from "uhtml";
+import {fileSaveLegacy as downloadFile} from "browser-fs-access";
 import Globals from "app/globals";
 import db, {DB, unPackDesign} from "app/db";
 import {SECTIONS,walk} from "./authoring-document";
-import {captureNative,emptyNative,documentSession,fingerprint,acceptNative,installNative,persistNative} from "./authoring-native";
+import {captureNative,emptyNative,documentSession,fingerprint,acceptNative,hasNativeLayoutPieces} from "./authoring-native";
 import {authorInterface,MODELS} from "./authoring-agent";
+import {createDiagnostics,diagnosticFingerprint} from "./authoring-diagnostics";
 import "css/authoring.css";
 
 /** The assistant lives in the existing designer. Native manual editing stays available. */
@@ -24,6 +26,9 @@ export class AuthoringPanel {
   abort=null;
   usage=null;
   audit=[];
+  diagnosticsEnabled=false;
+  diagnosticBoardText=false;
+  diagnostics=null;
 
   update(){Globals.state?.update();}
   async run() {
@@ -31,17 +36,21 @@ export class AuthoringPanel {
     if(!this.description.trim()){this.error="Describe the interface or the change you need.";this.update();return;}
     const original=captureNative(),name=db.designName, version=fingerprint(original);
     const selected=this.mode==="edit"?Globals.layout.selected?.id || null:null;
-    this.open=true;this.busy=true;this.error="";this.pending=null;this.usage=null;
+    this.diagnostics=this.diagnosticsEnabled?createDiagnostics({model:this.model,mode:this.mode,selected,request:this.description,includeBoardText:this.diagnosticBoardText}):null;
+    const diagnostic=this.diagnostics;
+    diagnostic?.record({stage:"transaction",before:diagnosticFingerprint(version)});
+    this.open=true;this.busy=true;this.error="";this.pending=null;this.usage=null;this.audit=[];
     const controller=this.abort=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),240000);
+    let timedOut=false;
+    const timeout=setTimeout(()=>{timedOut=true;controller.abort();},480000);
     this.update();
     try {
       const session=documentSession(this.mode==="new"?emptyNative():original,await db.listMedia());
-      const result=await authorInterface({session,request:this.description.trim(),selected,model:this.model,signal:controller.signal,history:this.summaries,
-        onProgress:message=>{this.status=message;this.update();}});
+      const result=await authorInterface({session,request:this.description.trim(),selected,model:this.model,requireVisible:this.mode==="new" || !hasNativeLayoutPieces(original),signal:controller.signal,history:this.summaries,
+        onProgress:message=>{this.status=message;this.update();},onDiagnostic:event=>diagnostic?.record(event)});
       if(controller.signal.aborted)throw new DOMException("Cancelled","AbortError");
       this.usage=result.usage;this.audit=result.audit;
-      if(result.question){this.status=result.question;return;}
+      if(result.question){this.status=result.question;diagnostic?.finish("needs-input");return;}
       if(db.designName!==name || fingerprint(captureNative())!==version)throw new Error("You changed the board while Groq was working. Your manual changes were kept; run the request against this updated board.");
       // Voice selection is a device/account choice, not a design task.
       const voice=walk(original.layout).find(n=>n.className==="Speech")?.props.voiceURI;
@@ -50,9 +59,12 @@ export class AuthoringPanel {
       if(result.checked.effects.length){
         this.pending=proposal;
         this.status="Review the external connections or device effects below before applying this design.";
+        diagnostic?.finish("awaiting-review");
       }else await this.apply(proposal);
     }catch(e){
-      this.error=controller.signal.aborted?"Stopped. Your board is unchanged.":e.message || "No changes were applied.";
+      diagnostic?.record({stage:"failure",code:timedOut?"timeout":controller.signal.aborted?"cancelled":["auth","no-key","network","rate-limit","daily-limit","request-size","tool-call","bad-response","http"].includes(e.kind)?e.kind:"authoring"});
+      diagnostic?.finish(timedOut?"timeout":controller.signal.aborted?"cancelled":"failed");
+      this.error=timedOut?"Groq could not finish within eight minutes. Your board and last working copy are unchanged.":controller.signal.aborted?"Stopped. Your board is unchanged.":e.message || "No changes were applied.";
       this.status="";
     }finally{clearTimeout(timeout);this.busy=false;this.abort=null;this.update();}
   }
@@ -61,6 +73,8 @@ export class AuthoringPanel {
     const first=this.workspaceName!==db.designName;
     if(first)this.originalName=db.designName;
     const result=await acceptNative(proposal.design,{sourceName:db.designName,newCopy:first,title:proposal.title});
+    this.diagnostics?.record({stage:"transaction",after:diagnosticFingerprint(fingerprint(result.after)),persisted:true,rendered:true,copied:first,controls:proposal.presentation?.controls || 0});
+    this.diagnostics?.finish("applied");
     this.workspaceName=result.name;
     this.history.splice(this.top);
     this.history.push({before:result.before,after:result.after,summary:proposal.summary});
@@ -89,10 +103,8 @@ export class AuthoringPanel {
     this.busy=true;this.update();
     const target=redo?entry.after:entry.before;
     try{
-      const installed=installNative(target);
-      try{await persistNative(installed,{name:db.designName});}catch(e){installNative(expected);throw e;}
+      await acceptNative(target,{newCopy:false,sourceName:db.designName});
       this.top+=redo?1:-1;this.error="";this.status=redo?"Redid the AI changes.":"Undid the AI changes.";
-      db.notify({action:"update",name:db.designName});
     }catch(e){this.error=e.message;}finally{this.busy=false;this.update();}
   }
   async importFile(file) {
@@ -110,6 +122,17 @@ export class AuthoringPanel {
       localStorage.setItem("osdpi-open-ai-generator","1");
       window.location.hash=storage.designName;
     }catch(e){this.error=e.message || "Import failed.";}finally{this.busy=false;this.update();}
+  }
+  async downloadBoard() {
+    if(this.busy)return;
+    this.busy=true;this.error="";this.update();
+    try{await downloadFile(await db.convertDesignToBlob(),{fileName:db.designName+".osdpi"});}
+    catch(e){this.error=e.message || "The interface could not be exported.";}
+    finally{this.busy=false;this.update();}
+  }
+  async downloadDiagnostics() {
+    if(!this.diagnostics || this.busy)return;
+    await downloadFile(new Blob([JSON.stringify(this.diagnostics.report,null,2)],{type:"application/json"}),{fileName:"osdpi-ai-diagnostics.json"});
   }
   template() {
     const selected=Globals.layout?.selected;
@@ -137,7 +160,7 @@ export class AuthoringPanel {
           <button type="button" class="ai-generate-btn" data-testid="author-run" ?disabled=${this.busy} @click=${()=>this.run()}>${this.busy?"Working…":"Build / change interface"}</button>
           ${this.busy?html`<button type="button" data-testid="author-cancel" @click=${()=>this.abort?.abort()}>Stop</button>`:html``}
           <button type="button" data-testid="author-preview" ?disabled=${this.busy} @click=${()=>Globals.state.update({editing:false})}>Preview</button>
-          <button type="button" data-testid="author-download" ?disabled=${this.busy} @click=${()=>db.saveDesign()}>Download .osdpi</button>
+          <button type="button" data-testid="author-download" ?disabled=${this.busy} @click=${()=>this.downloadBoard()}>Download .osdpi</button>
         </div>
         <p class="ai-key-note">Uses the Groq key saved below. Relevant board text and configuration are sent to Groq. Account keys and audio are not included in the prompt.</p>
         ${this.status?html`<p role="status" data-testid="author-status">${this.status}</p>`:html``}
@@ -157,6 +180,13 @@ export class AuthoringPanel {
             ${MODELS.map(([id,name])=>html`<option value=${id} ?selected=${id===this.model}>${name}</option>`)}
           </select></label>
           <p>Native schemas and references are checked before applying. Preview is still necessary to judge layout and usability.</p>
+          <label><input type="checkbox" data-testid="author-diagnostics" ?checked=${this.diagnosticsEnabled} ?disabled=${this.busy}
+            @change=${e=>{this.diagnosticsEnabled=e.target.checked;if(!this.diagnosticsEnabled)this.diagnostics=null;this.update();}}/>Collect diagnostics for the next request</label>
+          <p>Metadata stays in memory. Reports exclude prompts, board text, tool arguments, and account keys.</p>
+          ${this.diagnosticsEnabled?html`<label><input type="checkbox" data-testid="author-diagnostics-text" ?checked=${this.diagnosticBoardText} ?disabled=${this.busy}
+            @change=${e=>{this.diagnosticBoardText=e.target.checked;this.update();}}/>Include tool payloads (contains board text)</label>
+            <p>Optional for troubleshooting synthetic test boards. Review this report before sharing; account keys are scrubbed.</p>`:html``}
+          ${this.diagnostics&&!this.busy?html`<button type="button" data-testid="author-diagnostics-download" @click=${()=>this.downloadDiagnostics()}>Download diagnostics</button>`:html``}
           ${this.usage?html`<p>${this.usage.calls} requests; ${this.usage.total_tokens} reported tokens.</p>`:html``}
           ${this.audit.length?html`<p>${this.audit.map(a=>a.tool+(a.ok?" OK":" needs correction")).join(" → ")}</p>`:html``}
         </details>

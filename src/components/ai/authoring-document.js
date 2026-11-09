@@ -8,6 +8,18 @@ const scalar = x => typeof x === "string" || typeof x === "boolean" || typeof x 
 const object = x => x && typeof x === "object" && !Array.isArray(x);
 const enabled = x => x === true || x === "true";
 const forbidden = new Set(["__proto__", "prototype", "constructor"]);
+const eventOrigins = new Set(["init", "*", "okSlot"]);
+// These native controls actually dispatch Actions. Tabs and Radio activate
+// their own handlers instead; a name alone does not make an action origin.
+const actionNameFields = new Map([["Button","name"],["Grid","name"],["VSD","name"],["Display","Name"],["Method","Name"]]);
+const actionOrigin = item => {
+  const field=actionNameFields.get(item.className);
+  return field ? item.props?.[field] : undefined;
+};
+const ruleCondition = action => {
+  const conditions=action.children.filter(n=>n.className==="ActionCondition");
+  return conditions.length<=1 ? String(conditions[0]?.props.Condition || "").trim() : null;
+};
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function clean(value) {
   if (Array.isArray(value)) return value.map(clean);
@@ -45,7 +57,8 @@ export function presentationReview(design, request="", {requireVisible=true}={})
     const rows=(design.content||[]).filter(r=>/^[a-z]$/i.test(String(r.label||""))).map(r=>r.label.toUpperCase());
     const keys=rows.length?rows:buttons.filter(b=>/^[a-z]$/i.test(String(b.props.label||""))).map(b=>b.props.label.toUpperCase());
     if(keys.join("")!=="QWERTYUIOPASDFGHJKLZXCVBNM") errors.push("The requested QWERTY keyboard needs exactly 26 keys, in QWERTY, ASDFGHJKL, ZXCVBNM order.");
-    if(/\b(display|message)\b/i.test(request) && !displays.some(n=>(n.props?.stateName||"$Display")==="$Display")) errors.push("The requested keyboard message display is missing.");
+    const displayStates=displays.map(n=>n.props?.stateName || "$Display");
+    if(/\b(display|message)\b/i.test(request) && !displays.length) errors.push("The requested keyboard message display is missing.");
     const updates=walk(design.actions||{}).filter(n=>n.className==="ActionUpdate");
     if(!updates.some(n=>/\badd_letter\s*\(/.test(n.props?.newValue||""))) errors.push("The keyboard keys are missing a native add_letter action.");
     const linked=(label,state)=>{
@@ -53,8 +66,9 @@ export function presentationReview(design, request="", {requireVisible=true}={})
       const origins=new Set(matching.map(b=>b.props.name));
       return (design.actions?.children||[]).some(a=>origins.has(a.props.origin) && walk(a).some(n=>n.className==="ActionUpdate" && n.props.stateName===state));
     };
-    if(/\bspeak\b/i.test(request) && !linked("Speak","$Speak")) errors.push("The requested Speak button is missing its speech action.");
-    if(/\bclear\b/i.test(request) && !linked("Clear","$Display")) errors.push("The requested Clear button is missing its display action.");
+    const speechStates=layout.filter(n=>n.className==="Speech").map(n=>n.props.stateName || "$Speak");
+    if(/\bspeak\b/i.test(request) && !speechStates.some(state=>linked("Speak",state))) errors.push("The requested Speak button is missing its speech action or Speech listener.");
+    if(/\bclear\b/i.test(request) && !displayStates.some(state=>linked("Clear",state))) errors.push("The requested Clear button is missing its display action.");
     if(/\bbackspace\b/i.test(request) && !buttons.some(b=>/backspace/i.test(b.props.label||""))) errors.push("The requested Backspace button is missing.");
   }
   return {ok:!errors.length,errors,summary:{controls,buttons:buttons.length,populatedGrids:populatedGrids.length,displays:displays.length,letters:(design.content||[]).filter(r=>/^[a-z]$/i.test(r.label||"")).length}};
@@ -124,7 +138,14 @@ export class AuthoringDocument {
     const result=node(spec.className, this.resolve(spec.props || {}));
     const fields=this.catalog[spec.className].props;
     if(fields.Key && !result.props.Key) result.props.Key=this.unique("key_"+ (++this.sequence));
-    if(fields.name && !own(result.props,"name")) result.props.name=this.unique(spec.className.toLowerCase());
+    if(fields.name && !own(result.props,"name")) result.props.name=this.unique(spec.ref || spec.className.toLowerCase());
+    if(spec.className==="TabControl" && !own(result.props,"stateName")) {
+      const used=new Set([...this.refs.values()].map(n=>n.props?.stateName ?? this.catalog[n.className]?.props.stateName?.default));
+      const base="$"+String(result.props.name || "tabs").replace(/[^a-zA-Z0-9_]/g,"_");
+      let stateName=base,index=2;
+      while(used.has(stateName))stateName=base+index++;
+      result.props.stateName=stateName;
+    }
     if(fields.Response) result.props.Response=spec.className;
     if(fields.CueType) result.props.CueType=spec.className;
     result._ref=spec.ref || `n${++this.sequence}`;
@@ -138,7 +159,7 @@ export class AuthoringDocument {
   edit(operations) {
     assert(Array.isArray(operations) && operations.length && operations.length<=80,"Provide between 1 and 80 edits in a batch.");
     const previous=clone(this.design), seq=this.sequence;
-    const before=this.diagnose().errors;
+    const before=this.diagnose().errors,removedRules=new Set();
     try {
       for(const op of operations) {
         assert(object(op) && typeof op.op==="string", "Each edit needs an op.");
@@ -152,7 +173,7 @@ export class AuthoringDocument {
             const parent=this.find(op.parent);
             assert(parent.children,"The insertion parent is not a native container.");
             const specs=op.nodes || (op.node ? [op.node] : []);
-            assert(specs.length>0,"Insert needs node or nodes.");
+            assert(specs.length>0,'Layout insert needs node or nodes, e.g. {op:"insert",parent:"page",nodes:[{className:"Button",ref:"choice",props:{label:"Choose"}}]}. rows/labels/characters are only for parent:"content".');
             const created=specs.map(spec=>this.prepare(spec));
             parent.children.splice(this.index(op.index,parent.children.length),0,...created);
           }
@@ -179,23 +200,75 @@ export class AuthoringDocument {
             assert(this.parents.get(next._ref).section===section,"Move within a native section, not between unrelated sections.");
             list.splice(list.indexOf(target),1);
             next.children.splice(this.index(op.index,next.children.length),0,target);
-          } else list.splice(list.indexOf(target),1);
+          } else {
+            if(section==="layout") {
+              const origins=new Set(walk(target).map(actionOrigin).filter(Boolean));
+              for(const action of this.design.actions.children)if(origins.has(action.props.origin)&&!eventOrigins.has(action.props.origin))removedRules.add(action);
+            }
+            list.splice(list.indexOf(target),1);
+          }
         } else if(op.op==="bind") {
-          const target=op.target==="init" ? null : this.find(op.target);
-          const origin=target ? target.props.name || target.props.Name : "init";
+          const mode=op.mode===undefined ? "merge" : op.mode;
+          assert(["merge","replace"].includes(mode), "bind mode must be merge or replace.");
+          const target=eventOrigins.has(op.target) ? null : this.find(op.target);
+          if(target) {
+            const nameField=actionNameFields.get(target.className);
+            const initialization='For startup initialization use {op:"bind",target:"init",rules:[{updates:{$Score:"0"}}]}; do not create a Method for initialization.';
+            assert(nameField, ["Page","Stack"].includes(target.className)
+              ? `${target.className} is a layout container, not an action event. ${initialization}`
+              : `${target.className} does not dispatch native Actions. Tabs and Radio navigate/select directly; bind a Button, Grid, VSD, Display or Method instead. ${initialization}`);
+            if(!String(target.props[nameField] || "").trim())target.props[nameField]=this.unique(target._ref || target.className.toLowerCase());
+          }
+          const origin=target ? actionOrigin(target) : op.target;
           assert(origin,"This target needs a native name before attaching an action.");
-          const rules=op.rules;
-          assert(Array.isArray(rules)&&rules.length,"bind needs rules with condition and updates.");
-          // Only replace the explicitly targeted control's rules.
-          this.design.actions.children=this.design.actions.children.filter(n=>n.props.origin!==origin);
-          const added=rules.map(rule=>node("Action",{origin},[
-            node("ActionCondition",{Condition:rule.condition || ""}),
-            ...Object.entries(this.resolve(rule.updates || {})).map(([stateName,newValue])=>node("ActionUpdate",{stateName,newValue})),
-          ]));
-          this.design.actions.children.unshift(...added);
+          assert(Array.isArray(op.rules)&&op.rules.length,"bind needs rules with condition and updates.");
+          const rules=op.rules.map(rule=>{
+            assert(object(rule)&&Object.keys(rule).every(key=>["condition","updates"].includes(key)),"Each bind rule accepts condition and updates only.");
+            assert(rule.condition===undefined || typeof rule.condition==="string","A rule condition must be an expression string.");
+            assert(object(rule.updates)&&Object.keys(rule.updates).length,"Each bind rule needs a nonempty updates object.");
+            const condition=this.resolve(rule.condition || "").trim();
+            const updates=Object.entries(rule.updates).map(([state,value])=>[this.resolve(state),this.resolve(value)]);
+            assert(new Set(updates.map(([state])=>state)).size===updates.length,"Each resolved state may appear only once in a bind rule.");
+            return node("Action",{origin},[node("ActionCondition",{Condition:condition}),...updates.map(([stateName,newValue])=>node("ActionUpdate",{stateName,newValue}))]);
+          });
+          const actions=this.design.actions.children;
+          if(mode==="replace") {
+            let index=actions.findIndex(action=>action.props.origin===origin);
+            if(index<0)index=actions.findIndex(action=>action.props.origin==="*");
+            if(index<0)index=actions.length;
+            this.design.actions.children=actions.filter(action=>action.props.origin!==origin);
+            this.design.actions.children.splice(index,0,...rules);
+          } else for(const rule of rules) {
+            const condition=ruleCondition(rule);
+            const existing=actions.find(action=>action.props.origin===origin&&ruleCondition(action)===condition);
+            if(existing) {
+              // Native Actions evaluates one patch; the last duplicate state
+              // wins. Keep all unrelated updates and the existing rule's ref.
+              for(const update of rule.children.filter(n=>n.className==="ActionUpdate")) {
+                const previous=existing.children.filter(n=>n.className==="ActionUpdate"&&n.props.stateName===update.props.stateName).at(-1);
+                if(previous)previous.props.newValue=update.props.newValue;
+                else existing.children.push(update);
+              }
+            } else {
+              // Preserve first-match order: a new specific condition precedes
+              // its fallback, and a new fallback follows existing conditions.
+              let index=condition ? actions.findIndex(action=>action.props.origin===origin&&ruleCondition(action)==="") : -1;
+              if(index<0) {
+                const last=actions.map(action=>action.props.origin).lastIndexOf(origin);
+                index=last>=0 ? last+1 : actions.findIndex(action=>action.props.origin==="*");
+              }
+              if(index<0)index=actions.length;
+              actions.splice(index,0,rule);
+            }
+          }
         } else throw new Error(`Unknown edit '${op.op}'. Use insert, update, move, remove, or bind.`);
         this.refresh();
         assert(this.refs.size<6000,"The working document exceeds the 6,000-object safety limit.");
+      }
+      if(removedRules.size) {
+        const surviving=new Set([...walk(this.design.layout),...(this.design.method?.children || [])].map(actionOrigin).filter(Boolean));
+        this.design.actions.children=this.design.actions.children.filter(action=>!removedRules.has(action)||surviving.has(action.props.origin));
+        this.refresh();
       }
       const structural=this.diagnose().errors.filter(e=>!e.deferred && !before.some(old=>old.key===e.key && old.message===e.message));
       assert(!structural.length, structural.map(e=>`${e.ref}: ${e.message}`).join("\n"));
@@ -237,6 +310,10 @@ export class AuthoringDocument {
       for(const [key,value] of Object.entries(n.props || {})) {
         const p=spec.props[key];
         if(!p){issue(n,key,`Unknown ${n.className} property '${key}'. Inspect its schema.`);continue;}
+        if(p.expression && typeof value!=="string") {
+          issue(n,key,`Expression '${key}' must be a string containing native formula text. Use "0" for a number, "true" for a boolean, or "'Ready'" for literal text.`);
+          continue;
+        }
         if(!scalar(value)){issue(n,key,`Property '${key}' must be a string, number, or boolean.`);continue;}
         const formula=p.expression || typeof value==="string"&&value.startsWith("=");
         if(formula) {
@@ -255,6 +332,12 @@ export class AuthoringDocument {
       if(n.className==="HeadMouse") effects.push({ref:n._ref,message:"Head-mouse input requests camera access."});
       if(n.className==="Prediction" && ["ai","groq"].includes(String(prop(n,"predictor"))))effects.push({ref:n._ref,message:"Cloud predictions send text to an AI service."});
       for(const child of n.children || [])visit(child,n,section);
+      const groups=new Map();
+      for(const child of n.children || [])for(const [key,p] of Object.entries(this.catalog[child.className]?.props || {})) {
+        if(!p.exclusiveGroup || !enabled(prop(child,key)))continue;
+        if(groups.has(p.exclusiveGroup))issue(child,key,`Only one sibling may enable ${p.exclusiveGroup}. Disable the other selection explicitly.`);
+        else groups.set(p.exclusiveGroup,child);
+      }
     };
     for(const [section,root] of Object.entries(ROOTS)) {
       if(this.design[section]?.className!==root)issue(null,section,`Missing native ${root} root.`);
@@ -292,10 +375,9 @@ export class AuthoringDocument {
       if(n.className==="Timer" && Number(prop(n,"Interval"))<=0)issue(n,"Interval","Timer interval must be positive seconds.");
       if(n.className==="ActionUpdate" && !/^\$[\w]+(?:\.[\w]+)*$/.test(String(prop(n,"stateName"))))issue(n,"stateName","ActionUpdate needs a $state variable.");
     }
-    const origins=new Set(nodes.filter(n=>walk(this.design.layout).includes(n)).map(n=>n.props.name || n.props.Name).filter(Boolean));
-    for(const m of this.design.method?.children || [])origins.add(m.props.Name);
+    const origins=new Set([...walk(this.design.layout),...(this.design.method?.children || [])].map(actionOrigin).filter(Boolean));
     for(const action of this.design.actions?.children || []) {
-      if(!["init","*"].includes(action.props.origin)&&!origins.has(action.props.origin))warnings.push(`Action '${action.props.origin}' has no matching named layout component or method.`);
+      if(!eventOrigins.has(action.props.origin)&&!origins.has(action.props.origin))issue(action,"origin",`Action '${action.props.origin}' has no matching named layout component or method. Bind the component ref or use its actual name.`,true);
     }
     if(!this.design.method?.children?.some(n=>enabled(prop(n,"Active"))))warnings.push("No access method is active. Check the intended input behavior in Preview.");
     return {errors,warnings,effects};

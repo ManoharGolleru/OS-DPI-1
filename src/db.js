@@ -59,6 +59,8 @@ export class DB {
     this.fileUid = "";
     /** Track whether there are unsaved changes for beforeunload warning */
     this.hasUnsavedChanges = false;
+    /** Native writes already started by editor changes or init actions. */
+    this.pendingWrites = new Set();
   }
 
   /** set the name for the current design
@@ -199,29 +201,51 @@ export class DB {
    * @param {string} type
    * @param {Object} data
    */
-  async write(type, data) {
-    this.hasUnsavedChanges = true;
-    const db = await this.dbPromise;
-    // normalize the data for unicode issues
-    data = JSON.parse(
-      JSON.stringify(data, (_key, value) => {
-        if (typeof value === "string") {
-          return value.normalize("NFC"); // Use NFC normalization form
-        }
-        return value;
-      }),
+  write(type, data) {
+    // A board switch during an await must not move this write to another board.
+    const name = this.designName;
+    const pending = (async () => {
+      this.hasUnsavedChanges = true;
+      const db = await this.dbPromise;
+      // normalize the data for unicode issues
+      data = JSON.parse(
+        JSON.stringify(data, (_key, value) => {
+          if (typeof value === "string") {
+            return value.normalize("NFC"); // Use NFC normalization form
+          }
+          return value;
+        }),
+      );
+
+      // do all this in a transaction
+      const tx = db.transaction(["store5", "saved"], "readwrite");
+      // note that this design has been updated
+      await tx.objectStore("saved").delete(name);
+      // add the record to the store
+      const store = tx.objectStore("store5");
+      await store.put({ name, type, data });
+      await tx.done;
+
+      this.notify({ action: "update", name });
+    })();
+    this.pendingWrites.add(pending);
+    pending.then(
+      () => this.pendingWrites.delete(pending),
+      () => this.pendingWrites.delete(pending),
     );
+    return pending;
+  }
 
-    // do all this in a transaction
-    const tx = db.transaction(["store5", "saved"], "readwrite");
-    // note that this design has been updated
-    await tx.objectStore("saved").delete(this.designName);
-    // add the record to the store
-    const store = tx.objectStore("store5");
-    await store.put({ name: this.designName, type, data });
-    await tx.done;
-
-    this.notify({ action: "update", name: this.designName });
+  /** Wait for writes already started by the native editor or init actions.
+   * Drain all writes even when one fails so transaction rollback is ordered.
+   */
+  async settleWrites() {
+    const failed = [];
+    while (this.pendingWrites.size) {
+      const results = await Promise.allSettled([...this.pendingWrites]);
+      failed.push(...results.filter(result => result.status === "rejected"));
+    }
+    if (failed.length) throw failed[0].reason;
   }
 
   /** Write a log record

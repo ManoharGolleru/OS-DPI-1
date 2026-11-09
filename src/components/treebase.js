@@ -6,7 +6,7 @@ import { errorHandler } from "./errors";
 import { friendlyName } from "./names";
 
 /** Human-readable descriptions for each component type shown in the Add dropdown */
-const componentDescriptions = {
+export const componentDescriptions = {
   Grid: "Grid — rows × columns of buttons",
   Stack: "Stack — row or column layout",
   Button: "Button — single AAC symbol button",

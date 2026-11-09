@@ -41,7 +41,8 @@ test('keyboard request uses real local tools, not whole-file JSON',async({page})
   expect(requests[0].model).toBe('openai/gpt-oss-120b');
   expect(requests[0].tools.map(t=>t.function.name)).toContain('inspect');
   expect(requests[0].response_format).toBeUndefined();
-  expect(requests[1].messages.some(m=>m.role==='tool')).toBe(true);
+  const task=JSON.parse(requests[1].messages.find(m=>m.role==='user').content);
+  expect(requests[1].messages.some(m=>m.role==='tool') || task.lastResults.some(r=>r.tool==='recipe'&&r.ok&&r.instruction.includes('finish'))).toBe(true);
   expect(await page.evaluate(()=>fixture.getAIModel('groq'))).toBe('openai/gpt-oss-120b');
   const stored=await page.evaluate(async()=>{
     const database=await fixture.db.dbPromise;
@@ -51,6 +52,172 @@ test('keyboard request uses real local tools, not whole-file JSON',async({page})
   expect(stored).toBe(original);
   expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(26);
   expect(errors).toEqual([]);
+});
+
+test('completed edits submit in one request and run native keyboard behavior checks',async({page})=>{
+  const {requests}=await setup(page,[['recipe',{name:'keyboard',backspace:true,title:'Keyboard',summary:'Made the keyboard.'}]]);
+  await generate(page);
+  expect(requests).toHaveLength(1);
+  expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(26);
+  await buttons(page);
+  await page.locator('#UI').getByRole('button',{name:'h',exact:true}).click();
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Display'))).toBe('h');
+});
+
+test('real Qwen omission of the Backspace flag is resolved from the requested native keyboard behavior',async({page})=>{
+  const {requests}=await setup(page,[['recipe',{name:'keyboard',displayPosition:'top',summary:'Created keyboard.'}]]);
+  await generate(page);
+  expect(requests).toHaveLength(1);
+  await buttons(page);
+  await page.locator('#UI').getByRole('button',{name:'h',exact:true}).click();
+  await page.locator('#UI').getByRole('button',{name:'i',exact:true}).click();
+  await page.locator('#UI').getByRole('button',{name:'Backspace',exact:true}).click();
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Display'))).toBe('h');
+});
+
+test('generic native activity can submit its action tests in one request',async({page})=>{
+  const {requests}=await setup(page,[['edit',{operations:[
+    {op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Score'}},{className:'Button',ref:'add',props:{label:'Add one'}}]},
+    {op:'bind',target:'init',rules:[{updates:{$Score:'0'}}]},
+    {op:'bind',target:'add',rules:[{updates:{$Score:'increment(1)'}}]},
+  ],summary:'Created a score activity.',tests:[{steps:[],expect:{$Score:0}},{steps:[{target:'add'},{target:'add'}],expect:{$Score:2}}]}]]);
+  await generate(page,'Create a score activity with an Add one button and a score display.');
+  expect(requests).toHaveLength(1);
+  await buttons(page);
+  await page.locator('#UI').getByRole('button',{name:'Add one',exact:true}).click();
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Score'))).toBe(1);
+});
+
+test('inspection combines selectors and retains schema knowledge across later turns',async({page})=>{
+  const {requests}=await setup(page,[['inspect',{target:'page',classes:['TabControl'],example:'navigation'}],
+    ['inspect',{target:'functions'}],['inspect',{target:'content'}],
+    ['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard.'}]]);
+  await generate(page);
+  const first=JSON.parse(requests[1].messages.find(m=>m.role==='tool').content);
+  expect(first.object.className).toBe('Page');
+  expect(first.schemas.TabControl.children).toContain('TabPanel');
+  expect(first.example).toContain('TabControl');
+  expect(requests[3].messages[0].content).toContain('"TabControl":{');
+  expect(requests[2].messages.some(m=>m.role==='tool'&&m.content.includes('replace_last_letter'))).toBe(true);
+});
+
+test('real activity omission of native init cannot pass the requested opening-state checks',async({page})=>{
+  const {requests}=await setup(page,[['edit',{operations:[
+    {op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Score'}},{className:'Display',props:{stateName:'$Status'}},{className:'Button',ref:'add',props:{label:'Add point'}}]},
+    {op:'bind',target:'add',rules:[{updates:{$Score:'increment(1)',$Status:"'Keep going'"}}]},
+  ],summary:'Created counting activity.',tests:[{steps:[],expect:{$Score:0,$Status:'Ready'}},{steps:[{target:'add'}],expect:{$Score:1,$Status:'Keep going'}}]}],
+  async(route,requests)=>{
+    expect(JSON.stringify(requests.at(-1).messages)).toContain('got undefined');
+    expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
+    await route.fulfill({json:toolReply('edit',{operations:[{op:'bind',target:'init',rules:[{updates:{$Score:'0',$Status:"'Ready'"}}]}],summary:'Initialized score and status.'},'fixed-init'),headers:{'x-ratelimit-remaining-tokens':'99999'}});
+  }]);
+  await generate(page,'Create a counting activity starting with score 0 and status Ready.');
+  expect(requests).toHaveLength(2);
+  expect(await page.evaluate(()=>[fixture.Globals.state.get('$Score'),fixture.Globals.state.get('$Status')])).toEqual([0,'Ready']);
+});
+
+test('quota countdown remains cancellable without changing the current board',async({page})=>{
+  const {requests}=await setup(page,[async route=>route.fulfill({status:429,headers:{'retry-after':'2'},json:{error:{message:'Tokens per minute quota. Try again in 2s.'}}})]);
+  const before=await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()));
+  await page.getByTestId('author-request').fill('Create an activity.');
+  await page.getByTestId('author-run').click();
+  await expect(page.getByTestId('author-status')).toContainText('Pacing requests');
+  await page.getByTestId('author-cancel').click();
+  await page.waitForFunction(()=>!fixture.panel.busy);
+  expect(requests).toHaveLength(1);
+  expect(await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()))).toBe(before);
+  expect(await page.evaluate(()=>fixture.db.names())).toEqual(['original']);
+});
+
+test('daily quota exhaustion stops rather than entering a refill loop',async({page})=>{
+  const {requests}=await setup(page,[async route=>route.fulfill({status:429,headers:{'retry-after':'3600'},json:{error:{message:'Rate limit reached on tokens per day (TPD).'}}})]);
+  await page.getByTestId('author-request').fill('Create an activity.');
+  await page.getByTestId('author-run').click();
+  await page.waitForFunction(()=>!fixture.panel.busy);
+  await expect(page.getByTestId('author-error')).toContainText('daily quota is exhausted');
+  expect(requests).toHaveLength(1);
+  expect(await page.evaluate(()=>fixture.db.names())).toEqual(['original']);
+});
+
+test('local expression tests do not inherit live messages and honor native non-grid filters',async({page})=>{
+  await setup(page,[]);
+  const checks=await page.evaluate(()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative());
+    f.Globals.state.update({$Display:'Private live message'});
+    s.edit([{op:'insert',parent:'page',node:{className:'Grid',ref:'words',props:{name:'words'},children:[{className:'GridFilter',props:{field:'#category',operator:'equals',value:"'food'"}}]}},
+      {op:'insert',parent:'content',rows:[{label:'Bread',category:'food'},{label:'Water',category:'drink'}]},
+      {op:'bind',target:'words',rules:[{updates:{$Display:'add_word(#label)'}}]}]);
+    return f.exercise(s,[{steps:[{target:'words',label:'Bread'}],expect:{$Display:'Bread '}}]);
+  });
+  expect(checks[0].ok).toBe(true);
+});
+
+test('qualified native functions are discoverable and local checks cannot mutate notes or queued actions',async({page})=>{
+  await setup(page,[]);
+  const result=await page.evaluate(async()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative());
+    f.Globals.data.setNoteRows([{label:'Keep my note'}]);
+    const native=await import('/OS-DPI-1/components/ai/authoring-native.js');
+    s.edit([{op:'insert',parent:'page',node:{className:'Button',ref:'test',props:{label:'Test'}}},
+      {op:'bind',target:'test',rules:[{updates:{$Display:"slots.toString(slots.init('I want bread'))"}}]}]);
+    const pure=native.exercise(s,[{steps:[{target:'test'}],expect:{$Display:'I want bread'}}]);
+    const queuedBefore=f.Globals.actions.eventQueue.length;
+    s.edit([{op:'bind',target:'test',rules:[{updates:{$Display:"Notes('#label', 'Do not write')"}}]}]);
+    const notes=native.exercise(s,[{steps:[{target:'test'}],expect:{$Display:'anything'}}]);
+    s.edit([{op:'bind',target:'test',rules:[{updates:{$Display:"slots['update']('Do not queue')"}}]}]);
+    const slots=native.exercise(s,[{steps:[{target:'test'}],expect:{$Display:'anything'}}]);
+    return {names:native.nativeExpressionReference().available,pure,notes,slots,noteRows:f.Globals.data.noteRows,queuedBefore,queuedAfter:f.Globals.actions.eventQueue.length};
+  });
+  expect(result.names).toContain('slots.init');
+  expect(result.pure[0].ok,JSON.stringify(result.pure)).toBe(true);
+  expect(result.notes[0].ok).toBe(false);
+  expect(result.slots[0].ok).toBe(false);
+  expect(result.noteRows).toEqual([{label:'Keep my note'}]);
+  expect(result.queuedAfter).toBe(result.queuedBefore);
+});
+
+test('action checks use the same string dataset values as rendered native buttons',async({page})=>{
+  await setup(page,[]);
+  const result=await page.evaluate(()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative());
+    s.edit([{op:'insert',parent:'page',node:{className:'Grid',ref:'numbers',props:{rows:1,columns:1}}},
+      {op:'insert',parent:'content',rows:[{label:'Two',amount:2}]},
+      {op:'bind',target:'numbers',rules:[{updates:{$Result:'#amount + 1'}}]}]);
+    const checks=f.exercise(s,[{steps:[{target:'numbers',label:'Two'}],expect:{$Result:'21'}}]);
+    f.installNative(s.snapshot());return checks;
+  });
+  expect(result[0].ok).toBe(true);
+  await buttons(page);
+  await page.locator('#UI').getByRole('button',{name:'Two',exact:true}).click();
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Result'))).toBe('21');
+});
+
+test('keyboard recipe preserves an imported speech state and current notes',async({page})=>{
+  await setup(page,[]);
+  const result=await page.evaluate(()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative());
+    s.edit([{op:'insert',parent:'page',node:{className:'Speech',props:{stateName:'$ImportedSpeak',voiceURI:'test-voice'}}}]);
+    f.Globals.data.setNoteRows([{label:'A saved note'}]);
+    f.keyboardRecipe(s,{backspace:true});
+    const checks=f.exercise(s,s.nativeTests);
+    f.installNative(s.snapshot());
+    return {checks,notes:f.Globals.data.noteRows,voices:f.walk(s.design.layout).filter(n=>n.className==='Speech').map(n=>n.props)};
+  });
+  expect(result.checks.every(t=>t.ok)).toBe(true);
+  expect(result.notes).toEqual([{label:'A saved note'}]);
+  expect(result.voices).toEqual([{stateName:'$ImportedSpeak',voiceURI:'test-voice'}]);
+});
+
+test('deleting the selected piece can finish without losing its selection reference',async({page})=>{
+  await setup(page,[]);
+  const result=await page.evaluate(async()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative());
+    s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref:'removeMe',props:{label:'Remove'}},{className:'Button',ref:'keepMe',props:{label:'Keep'}}]}]);
+    s.changes=[];
+    let round=0;
+    return f.authorInterface({session:s,request:'Delete this selected button.',selected:'removeMe',turn:async()=>({message:{role:'assistant',tool_calls:[{id:'delete-'+round,type:'function',function:++round===1?{name:'edit',arguments:JSON.stringify({operations:[{op:'remove',target:'removeMe'}]})}:{name:'finish',arguments:JSON.stringify({summary:'Deleted the selected button.'})}}]}})});
+  });
+  expect(result.design.layout.children[0].children.map(n=>n.props.label)).toEqual(['Keep']);
 });
 
 test('native pointer keyboard types hello world, speaks once, backspaces and clears',async({page})=>{
@@ -79,7 +246,7 @@ test('arbitrary native score activity works without a keyboard or grid template'
   ]},{op:'bind',target:'init',rules:[{updates:{$Score:'0'}}]},
   {op:'bind',target:'right',rules:[{updates:{$Score:'increment(1)'}}]},
   {op:'bind',target:'reset',rules:[{updates:{$Score:'0'}}]}];
-  const {errors}=await setup(page,[['edit',{operations:edits}],['check',{tests:[{steps:[{target:'right'},{target:'right'}],expect:{$Score:2}}]}],['finish',{title:'Score activity',summary:'Buttons update the score.'}]]);
+  const {errors}=await setup(page,[['edit',{operations:edits}],['check',{tests:[{steps:[],expect:{$Score:0}},{steps:[{target:'right'},{target:'right'}],expect:{$Score:2}}]}],['finish',{title:'Score activity',summary:'Buttons update the score.'}]]);
   await generate(page,'Make a score display with Correct and Reset buttons. No speech.');await buttons(page);
   await page.locator('#UI').getByRole('button',{name:'Correct',exact:true}).click();
   await page.locator('#UI').getByRole('button',{name:'Correct',exact:true}).click();
@@ -212,9 +379,10 @@ test('generic tabs and vocabulary use the existing native navigation',async({pag
     {className:'TabPanel',props:{name:'food',label:'Food'},children:[{className:'Button',ref:'food',props:{name:'foodword',label:'Bread'}}]},
     {className:'TabPanel',props:{name:'drinks',label:'Drinks'},children:[{className:'Button',ref:'drink',props:{name:'drinkword',label:'Water'}}]},
   ]}},{op:'insert',parent:'page',node:{className:'Display',props:{stateName:'$Display'}}},
+  {op:'bind',target:'init',rules:[{updates:{$Display:"''"}}]},
   {op:'bind',target:'food',rules:[{updates:{$Display:'add_word(#label)'}}]},
   {op:'bind',target:'drink',rules:[{updates:{$Display:'add_word(#label)'}}]}];
-  const {errors}=await setup(page,[['edit',{operations:ops}],['finish',{summary:'Two native tabs with composition.'}]]);await generate(page,'Make Food and Drinks tabs.');await buttons(page);
+  const {errors}=await setup(page,[['edit',{operations:ops}],['finish',{summary:'Two native tabs with composition.',tests:[{steps:[],expect:{$Display:''}},{steps:[{target:'food'},{target:'drink'}],expect:{$Display:'Bread Water '}}]}]]);await generate(page,'Make Food and Drinks tabs.');await buttons(page);
   await page.locator('#UI').getByRole('button',{name:'Bread',exact:true}).click();
   await page.locator('#UI').getByRole('button',{name:'Drinks',exact:true}).click();
   await page.locator('#UI').getByRole('button',{name:'Water',exact:true}).click();
@@ -246,10 +414,74 @@ test('plain model prose cannot claim a finished board without tool calls',async(
   await page.waitForFunction(()=>!fixture.panel.busy);
   await expect(page.getByTestId('author-error')).toContainText('explanation rather than interface edits');
   expect(requests.length).toBe(2);
-  expect(requests.every(r=>r.tool_choice==='required')).toBe(true);
+  expect(requests.every(r=>r.tool_choice==='auto')).toBe(true);
   expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
   expect(await page.evaluate(()=>fixture.Globals.layout.children[0].children.length)).toBe(0);
   expect(errors).toEqual([]);
+});
+
+test('observed Groq required-tool failure is classified and repaired internally',async({page})=>{
+  const {requests}=await setup(page,[
+    async route=>route.fulfill({status:400,json:{error:{code:'tool_use_required',message:'Tool choice is required, but model did not call a tool'}}}),
+    ['recipe',{name:'keyboard',backspace:true}],['finish',{summary:'Created keyboard.'}],
+  ]);
+  await page.getByText('Model and checks',{exact:true}).click();
+  await page.getByTestId('author-diagnostics').check();
+  await generate(page,'Create a QWERTY keyboard with display, Speak, Clear, Backspace. Private test phrase.');
+  expect(requests).toHaveLength(3);
+  const report=await page.evaluate(()=>fixture.panel.diagnostics.report);
+  expect(report.outcome).toBe('applied');
+  expect(report.events).toEqual(expect.arrayContaining([
+    expect.objectContaining({stage:'provider',status:400,code:'tool-call'}),
+    expect.objectContaining({stage:'transaction',persisted:true,rendered:true,copied:true}),
+  ]));
+  expect(JSON.stringify(report)).not.toMatch(/Private test phrase|gsk_|Authorization|Created keyboard/);
+  expect(await page.evaluate(()=>fixture.panel.usage.calls)).toBe(3);
+});
+
+test('prose after staged edits asks for finish instead of accepting a claim',async({page})=>{
+  const {requests}=await setup(page,[['recipe',{name:'keyboard',backspace:true}],
+    async route=>route.fulfill({json:{choices:[{finish_reason:'stop',message:{role:'assistant',content:'Finished your keyboard.'}}]}}),
+    ['finish',{summary:'Created keyboard.'}],
+  ]);
+  await generate(page);
+  expect(requests).toHaveLength(3);
+  expect(requests[2].messages.some(m=>m.role==='user'&&m.content.includes('Call check and then finish'))).toBe(true);
+});
+
+test('failed interaction checks prevent finish until the actual actions are corrected',async({page})=>{
+  const {requests}=await setup(page,[['edit',{operations:[
+    {op:'insert',parent:'page',node:{className:'Button',ref:'scorebutton',props:{label:'Add',name:'score'}}},
+    {op:'bind',target:'init',rules:[{updates:{$Score:'0'}}]},
+    {op:'bind',target:'scorebutton',rules:[{updates:{$Score:'increment(2)'}}]},
+  ]}],['check',{tests:[{steps:[],expect:{$Score:0}},{steps:[{target:'scorebutton'}],expect:{$Score:1}}]}],
+  ['finish',{summary:'Score works.'}],
+  ['edit',{operations:[{op:'bind',target:'scorebutton',rules:[{updates:{$Score:'increment(1)'}}]}]}],
+  ['finish',{summary:'Corrected the score.'}]]);
+  await generate(page,'Make a button that adds one to score.');
+  expect(requests).toHaveLength(5);
+  expect(requests[3].messages.some(m=>m.role==='tool'&&m.content.includes('native interaction checks still fail'))).toBe(true);
+  await buttons(page);
+  await page.locator('#UI').getByRole('button',{name:'Add',exact:true}).click();
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Score'))).toBe(1);
+});
+
+test('failed requests retain opt-in diagnostics and leave the original untouched',async({page})=>{
+  await setup(page,[async route=>route.fulfill({status:401,json:{error:{message:'Unauthorized'}}})]);
+  const before=await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()));
+  await page.getByText('Model and checks',{exact:true}).click();
+  await page.getByTestId('author-diagnostics').check();
+  await page.getByTestId('author-request').fill('Private student vocabulary');
+  await page.getByTestId('author-run').click();
+  await page.waitForFunction(()=>!fixture.panel.busy);
+  const report=await page.evaluate(()=>fixture.panel.diagnostics.report);
+  expect(report.outcome).toBe('failed');
+  expect(report.events).toContainEqual(expect.objectContaining({stage:'provider',status:401,code:'auth'}));
+  expect(JSON.stringify(report)).not.toMatch(/Private student|gsk_|Authorization/);
+  expect(await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()))).toBe(before);
+  expect(await page.evaluate(()=>fixture.db.names())).toEqual(['original']);
+  await page.getByTestId('author-diagnostics').uncheck();
+  expect(await page.evaluate(()=>fixture.panel.diagnostics)).toBeNull();
 });
 
 test('content-only generation does not report success with empty Preview',async({page})=>{
@@ -262,7 +494,7 @@ test('content-only generation does not report success with empty Preview',async(
   await generate(page,'Make a communication board with some buttons.');
   expect(requests.length).toBe(4);
   const feedback=requests[2].messages.filter(m=>m.role==='tool').map(m=>m.content).join(' ');
-  expect(feedback).toContain('no visible, populated controls');
+  expect(feedback).toContain('no visible native output or controls');
   expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(28);
   expect(await page.locator('#UI button').count()).toBeGreaterThan(26);
   expect(errors).toEqual([]);
@@ -305,4 +537,53 @@ test('normal OS-DPI editor displays the accepted keyboard in its actual Preview'
   await page.locator('#UI').getByRole('button',{name:'i',exact:true}).click();
   await expect(page.locator('#UI')).toContainText('hi');
   expect(errors).toEqual([]);
+});
+
+test('actual media-rich repository archive retains its sections and resource hashes through a targeted edit',async({page})=>{
+  await page.addInitScript(()=>{localStorage.setItem('osdpi-open-ai-generator','1');localStorage.setItem('os-dpi-groq-key','gsk_fake_authoring_test_key');});
+  page.on('dialog',dialog=>dialog.accept());
+  await page.goto('/OS-DPI-1/#import-original',{waitUntil:'domcontentloaded'});
+  await expect(page.getByTestId('author-import')).toBeVisible();
+  await page.getByTestId('author-import').setInputFiles(new URL('../../examples/DEAN.osdpi',import.meta.url).pathname);
+  await page.waitForURL(/#DEAN$/);
+  await expect(page.getByTestId('author-run')).toBeVisible();
+  const before=await page.evaluate(async()=>{
+    const n=await import('/OS-DPI-1/components/ai/authoring-native.js');
+    const Globals=(await import('/OS-DPI-1/globals.js')).default;
+    const db=(await import('/OS-DPI-1/db.js')).default,database=await db.dbPromise;
+    const records=await database.getAllFromIndex('store5','by-name',db.designName);
+    const nodes=root=>[root,...root.children.flatMap(nodes)];
+    const grid=nodes(Globals.layout).find(n=>n.className==='Grid');
+    Globals.layout.select(grid);Globals.state.update({designerTab:'Content'});
+    return {design:n.captureNative(),target:grid.id,records,name:db.designName};
+  });
+  let count=0;
+  await page.route('https://api.groq.com/**',route=>route.fulfill({json:++count===1
+    ?toolReply('edit',{operations:[{op:'update',target:before.target,props:{buttonColor:'lightgreen'}}]},'import-edit')
+    :toolReply('finish',{summary:'Changed the selected grid color.'},'import-finish')}));
+  await page.getByTestId('author-request').fill('Make this grid’s buttons light green. Preserve everything else.');
+  await page.getByTestId('author-run').click();
+  await expect(page.getByTestId('author-run')).toBeEnabled();
+  await expect(page.getByTestId('author-error')).toHaveCount(0);
+  const after=await page.evaluate(async({target,name})=>{
+    const n=await import('/OS-DPI-1/components/ai/authoring-native.js');
+    const {default:db,unPackDesign}=await import('/OS-DPI-1/db.js'),database=await db.dbPromise;
+    const design=n.captureNative();
+    const archive=await unPackDesign(await db.convertDesignToBlob());
+    const hashes=async media=>Promise.all(media.map(async m=>[m.name,Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await m.content.arrayBuffer())))]));
+    const sourceMedia=await database.getAll('media');
+    const sourceKeys=await database.getAllKeys('media');
+    const originalMedia=sourceMedia.filter((_,i)=>sourceKeys[i][0]===name);
+    return {design,records:await database.getAllFromIndex('store5','by-name',name),originalHashes:await hashes(originalMedia),exportHashes:await hashes(archive.media),name:db.designName};
+  },before);
+  const expected=structuredClone(before.design);
+  const walk=root=>[root,...(root.children||[]).flatMap(walk)];
+  walk(expected.layout).find(n=>n.id===before.target).props.buttonColor='lightgreen';
+  // Native IDs are deliberately regenerated when installing a working copy.
+  const strip=v=>Array.isArray(v)?v.map(strip):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).filter(([k])=>k!=='id').map(([k,x])=>[k,strip(x)])):v;
+  expect(strip(after.design)).toEqual(strip(expected));
+  expect(after.records).toEqual(before.records);
+  expect(after.exportHashes.sort()).toEqual(after.originalHashes.sort());
+  expect(after.exportHashes).toHaveLength(11);
+  expect(after.name).not.toBe(before.name);
 });
