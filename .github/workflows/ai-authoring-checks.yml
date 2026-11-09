@@ -1,0 +1,35 @@
+name: AI authoring checks
+on:
+  push:
+    branches: [feature/ai-authoring-redesign]
+  pull_request:
+    paths: ['src/**', 'tests/**', '.github/workflows/ai-authoring-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ai-authoring-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install existing application dependencies
+        working-directory: src
+        run: npm install
+      - name: Build application
+        working-directory: src
+        run: npm run build
+      - name: Prepare isolated test environment
+        run: |
+          tar --exclude='src/.env*' --exclude='src/dist' --exclude='src/public' -czf /tmp/osdpi-test-environment.tgz src
+      - uses: actions/upload-artifact@v7
+        with:
+          name: osdpi-test-environment
+          path: /tmp/osdpi-test-environment.tgz
+          retention-days: 1
