@@ -36,5 +36,8 @@
     "uhtml": "^4.5.11",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.19.3/xlsx-0.19.3.tgz"
   },
-  "type": "module"
+  "type": "module",
+  "overrides": {
+    "rollup": "4.68.0"
+  }
 }
