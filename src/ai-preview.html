@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="./css/site.css">
+  <title>OS-DPI draft preview</title>
+  <style>
+    html,body { margin:0; height:100%; overflow:hidden; }
+    #UI { height:100%; min-height:400px; }
+    #preview-error { padding:1rem; color:#a11; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="cues"></div>
+  <div id="UI"></div>
+  <div id="preview-error" role="alert"></div>
+  <script>window.global = globalThis;</script>
+  <script type="module" src="./ai-preview.js"></script>
+</body>
+</html>
