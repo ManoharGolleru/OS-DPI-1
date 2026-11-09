@@ -1,163 +1,319 @@
-import { html } from "uhtml";
+import {html} from "uhtml";
 import Globals from "app/globals";
-import db from "app/db";
-import { fileSave } from "browser-fs-access";
-import { DESIGN_MODELS, SECTION_NAMES, walk } from "./design-format";
-import { captureDesign, selectedVoice, generateDesign, packDesign, saveDesignCopy } from "./design-engine";
+import db, {unPackDesign} from "app/db";
+import {fileOpen, fileSave} from "browser-fs-access";
+import {DESIGN_MODELS, SECTION_NAMES, starterDesign, walk} from "./design-format";
+import {keyboardDesign} from "./design-operations";
+import {captureDesign, selectedVoice, checkDraft, updateDraft, generateEdits,
+  collectMedia, packDesign, saveDesignCopy, preserveVoice} from "./design-engine";
 
-/** Draft state is local to this editor. Rendering performs no network or DB writes. */
+const duplicate=x=>JSON.parse(JSON.stringify(x));
+
 export class InterfaceDesigner {
-  description = "";
-  mode = "create";
-  access = "pointer";
-  model = localStorage.getItem("osdpi-design-model") || DESIGN_MODELS[0][0];
-  open = !!localStorage.getItem("osdpi-open-ai-generator");
-  busy = false;
-  status = "";
-  error = "";
-  draft = null;
-  rejected = null;
-  sourceName = "";
-  usage = null;
-  abort = null;
-
-  update() { Globals.state?.update(); }
-
-  async generate(repair = false) {
-    if (this.busy) return;
-    if (!this.description.trim()) { this.error = "Describe the interface or changes you need."; this.update(); return; }
-    this.open = true;
-    this.busy = true;
-    this.error = "";
-    this.usage = null;
-    this.status = "Generating a native draft. Your current board is unchanged.";
-    const abort = this.abort = new AbortController();
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; abort.abort(); }, 120000);
+  constructor() {
+    this.model=localStorage.getItem("osdpi-design-model") || DESIGN_MODELS[0][0];
+    this.open=!!localStorage.getItem("osdpi-open-ai-generator");
+    this.description="";
+    this.access="pointer";
+    this.draft=null;
+    this.baseline=null;
+    this.sourceName="";
+    this.media=new Map();
+    this.history=[];
+    this.future=[];
+    this.revision=0;
+    this.busy=false;
+    this.status="";
+    this.error="";
+    this.usage=null;
+    this.abort=null;
+    this.frame=null;
+    this.gridName="";
+    this.rowIndex=0;
+    this.previewText="";
+    this.frameReady=false;
+    window.addEventListener("message",event=>{
+      if (event.origin!==location.origin || event.source!==this.frame?.contentWindow) return;
+      if (event.data?.type==="osdpi-preview-ready") {
+        this.frameReady=true;
+        this.sendPreview();
+      } else if (event.data?.type==="osdpi-preview-state") {
+        const text=String(event.data.display||"");
+        if (text!==this.previewText) {this.previewText=text;this.update();}
+      } else if (event.data?.type==="osdpi-preview-error") {
+        this.error="Preview error: "+event.data.message;
+        this.update();
+      }
+    });
+  }
+  update() {Globals.state?.update();}
+  setDraft(design,title,summary,sourceName="",media=new Map()) {
+    this.draft={title,summary,design,warnings:[]};
+    this.baseline=duplicate(design);
+    this.sourceName=sourceName;
+    this.media=new Map(media);
+    this.history=[];this.future=[];
+    this.revision++;
+    this.error="";
+    this.status="Draft ready. Edit or test it below, then save a separate copy.";
+    this.rowIndex=0;
+    this.gridName="";
+    this.previewText="";
+    this.update();
+    this.sendPreview();
+  }
+  createKeyboard() {
+    try {
+      const design=preserveVoice(keyboardDesign({access:this.access}),selectedVoice());
+      const checked=checkDraft(design,null,[]);
+      if(checked.errors.length)throw new Error(checked.errors.join("\n"));
+      this.setDraft(design,"QWERTY Keyboard","Typing board with a display, Space, Speak and Clear.");
+    }catch(error){this.error=error.message;this.update();}
+  }
+  async useCurrent() {
+    if(this.busy)return;
+    try {
+      const design=captureDesign();
+      const media=await collectMedia(db.designName);
+      this.setDraft(design,db.designName+" edited","Copy of the current board.",db.designName,media);
+    }catch(error){this.error=error.message;this.update();}
+  }
+  async importFile() {
+    if(this.busy)return;
+    try {
+      const file=await fileOpen({description:"OS-DPI design",extensions:[".osdpi",".zip"]});
+      const archive=await unPackDesign(file);
+      for(const part of SECTION_NAMES)if(!(part in archive))throw new Error("Imported file has no "+part+".json section.");
+      const design=Object.fromEntries(SECTION_NAMES.map(name=>[name,archive[name]]));
+      const assets=new Map((archive.media||[]).map(item=>[item.name,item.content]));
+      const name=file.name.replace(/\.(osdpi|zip)$/i,"")||"Imported board";
+      this.setDraft(design,name+" edited","Imported design. Unchanged advanced components are preserved.","",assets);
+      this.status="Imported. Test it before saving changes.";
+      this.update();
+    }catch(error){
+      if(error.name!=="AbortError" && error.name!=="NotFoundError") {
+        this.error=error.message||"Import failed.";
+        this.update();
+      }
+    }
+  }
+  edited(operations,summary) {
+    const source=this.draft?.design||starterDesign(this.access);
+    const names=[...this.media.keys()];
+    const result=updateDraft(source,operations,{baseline:this.baseline,mediaNames:names});
+    preserveVoice(result.design,selectedVoice());
+    if(this.draft){
+      this.history.push(duplicate(this.draft));
+      if(this.history.length>25)this.history.shift();
+    }
+    this.future=[];
+    this.draft={title:this.draft?.title||"AI Board",summary,design:result.design,warnings:result.warnings};
+    this.revision++;
+    this.error="";
+    this.status=summary+". Test the draft below.";
+    this.update();
+    this.sendPreview();
+  }
+  manual(op,target=null,text=null,value=null,items=[]) {
+    try {this.edited([{op,target,text,value,items}],"Updated "+op.replace(/_/g," "));}
+    catch(error){this.error=error.message;this.update();}
+  }
+  undo() {
+    if(!this.history.length||this.busy)return;
+    this.future.push(duplicate(this.draft));
+    this.draft=this.history.pop();
+    this.revision++;
+    this.error="";
+    this.status="Undid the last change.";
+    this.update();
+    this.sendPreview();
+  }
+  redo() {
+    if(!this.future.length||this.busy)return;
+    this.history.push(duplicate(this.draft));
+    this.draft=this.future.pop();
+    this.revision++;
+    this.error="";
+    this.status="Redid the change.";
+    this.update();
+    this.sendPreview();
+  }
+  async generate() {
+    if(this.busy)return;
+    if(!this.description.trim()){this.error="Describe the interface or change you need.";this.update();return;}
+    const base=this.draft?.design||starterDesign(this.access);
+    const version=this.revision;
+    this.busy=true;
+    this.error="";
+    this.status="Asking Groq for native editing commands. The saved board is unchanged.";
+    this.usage=null;
+    const controller=this.abort=new AbortController();
     this.update();
     try {
-      this.sourceName = db.designName;
-      const mediaNames = await db.listMedia();
-      const baseDesign = repair ? this.rejected?.design
-        : this.mode === "refine" ? this.draft?.design
-        : this.mode === "edit" ? captureDesign() : null;
-      if (this.mode === "refine" && !baseDesign) throw new Error("Generate a draft before refining it.");
-      const instruction = repair
-        ? `${this.description}\nRepair the rejected draft. Keep the intended interface. Fix these validation errors:\n${this.rejected?.errors || "invalid native JSON"}`
-        : this.description;
-      const draft = await generateDesign({
-        description: instruction, model: this.model, mode: baseDesign ? "edit" : "create",
-        baseDesign, access: this.access, mediaNames, voiceURI: selectedVoice(), signal: abort.signal,
-        onUsage: usage => { this.usage = usage; },
+      const response=await generateEdits({
+        description:this.description,model:this.model,
+        mode:this.draft?"edit":"create",design:base,signal:controller.signal,
+        onUsage:usage=>{this.usage=usage;},
       });
-      if (abort.signal.aborted) return;
-      this.draft = draft;
-      this.rejected = null;
-      this.status = "Draft validated. Review all six sections below, then open a separate copy or download it.";
-    } catch (error) {
-      if (error.name === "AbortError" || abort.signal.aborted) {
-        this.error = timedOut ? "Generation timed out. No board was changed." : "Generation cancelled. No board was changed.";
-      } else {
-        this.error = error.message || "Generation failed. No board was changed.";
-        this.rejected = error.draft ? {...error.draft, errors: this.error} : null;
-      }
-      this.status = this.draft ? "The previous validated draft is still available." : "";
-    } finally {
-      clearTimeout(timer);
-      this.busy = false;
-      this.abort = null;
+      if(controller.signal.aborted)return;
+      if(version!==this.revision)throw new Error("The draft changed while Groq responded. Run the instruction again.");
+      this.edited(response.operations,response.summary);
+    }catch(error){
+      if(controller.signal.aborted)this.error="Request cancelled. The draft is unchanged.";
+      else this.error=error.message||"No changes made.";
+    }finally{
+      this.busy=false;
+      this.abort=null;
       this.update();
     }
   }
-
-  async openCopy() {
-    if (!this.draft || this.busy) return;
-    this.busy = true;
-    this.update();
-    try {
-      const name = await saveDesignCopy(this.draft, this.sourceName);
-      window.location.hash = name;
-    } catch (error) { this.error = `Could not save the copy: ${error.message}`; }
-    finally { this.busy = false; this.update(); }
+  async sendPreview() {
+    if(!this.frameReady||!this.frame?.contentWindow||!this.draft)return;
+    const version=this.revision;
+    try{
+      const media=await collectMedia(this.sourceName,this.media);
+      if(version!==this.revision)return;
+      this.frame.contentWindow.postMessage({
+        type:"osdpi-preview-load",design:this.draft.design,media:[...media],
+      },location.origin);
+    }catch(error){this.error="Preview assets: "+error.message;this.update();}
   }
-
+  async openCopy() {
+    if(!this.draft||this.busy)return;
+    this.busy=true;this.update();
+    try{
+      const name=await saveDesignCopy(this.draft,this.sourceName,this.media);
+      window.location.hash=name;
+    }catch(error){this.error="Could not save the board: "+error.message;}
+    finally{this.busy=false;this.update();}
+  }
   async download() {
-    if (!this.draft || this.busy) return;
-    try {
-      // Pass the Promise immediately so browser-fs-access retains the user gesture.
-      await fileSave(packDesign(this.draft.design, this.sourceName), {
-        fileName: this.draft.title.replace(/[^A-Za-z0-9_-]/g, "_") + ".osdpi", extensions: [".osdpi"],
+    if(!this.draft||this.busy)return;
+    try{
+      await fileSave(packDesign(this.draft.design,this.sourceName,this.media),{
+        fileName:this.draft.title.replace(/[^A-Za-z0-9_-]/g,"_")+".osdpi",
+        extensions:[".osdpi"],
       });
-    } catch (error) {
-      if (error.name !== "AbortError") { this.error = `Export failed: ${error.message}`; this.update(); }
+    }catch(error){
+      if(error.name!=="AbortError"){this.error="Export failed: "+error.message;this.update();}
     }
   }
-
   template() {
-    const draft = this.draft;
-    const layout = draft ? walk(draft.design.layout) : [];
+    const draft=this.draft;
+    const grids=draft?walk(draft.design.layout).filter(n=>n.className==="Grid"):[];
+    const grid=grids.find(g=>g.props.name===this.gridName)||grids[0];
+    const rows=draft?.design.content||[];
+    const idx=Math.min(this.rowIndex,Math.max(0,rows.length-1));
+    const row=rows[idx];
     return html`<details class="ai-section" ?open=${this.open}
-      @toggle=${e => { this.open = e.target.open; }}>
-      <summary>Generate interface with AI</summary>
+      @toggle=${e=>{this.open=e.target.open;}}>
+      <summary>Create or edit an interface</summary>
       <div class="ai-body">
-        <p>Create or edit a complete OS-DPI design: Layout, Content, Actions, Methods, Patterns and Cues.
-          Your current board is never overwritten.</p>
-        <label>Design model (Groq)
-          <select data-testid="design-model" ?disabled=${this.busy} @change=${e => {
-            this.model = e.target.value; localStorage.setItem("osdpi-design-model", this.model);
-          }}>
-            ${DESIGN_MODELS.map(([id, name]) => html`<option value=${id} ?selected=${this.model === id}>${name}</option>`)}
+        <p>Build a native OS-DPI board, edit the current board, or import an .osdpi file.
+          Test a separate draft before saving. Your original board stays untouched.</p>
+        <div class="ai-key-actions">
+          <button type="button" data-testid="design-keyboard" ?disabled=${this.busy}
+            @click=${()=>this.createKeyboard()}>New QWERTY keyboard</button>
+          <button type="button" data-testid="design-current" ?disabled=${this.busy}
+            @click=${()=>this.useCurrent()}>Edit current board</button>
+          <button type="button" data-testid="design-import" ?disabled=${this.busy}
+            @click=${()=>this.importFile()}>Import .osdpi</button>
+          <button type="button" ?disabled=${this.busy}
+            @click=${()=>{
+              if(this.draft && !window.confirm("Discard the current unsaved draft?"))return;
+              this.draft=null;this.baseline=null;this.media=new Map();
+              this.sourceName="";this.history=[];this.future=[];this.revision++;this.update();
+            }}>New blank draft</button>
+        </div>
+        <label>Groq model
+          <select data-testid="design-model" ?disabled=${this.busy}
+            @change=${e=>{this.model=e.target.value;localStorage.setItem("osdpi-design-model",this.model);}}>
+            ${DESIGN_MODELS.map(([id,name])=>html`<option value=${id} ?selected=${this.model===id}>${name}</option>`)}
           </select>
         </label>
-        <label>Task
-          <select data-testid="design-mode" ?disabled=${this.busy} @change=${e => { this.mode = e.target.value; this.access = this.mode === "create" ? "pointer" : "preserve"; this.update(); }}>
-            <option value="create" ?selected=${this.mode === "create"}>Create a new interface</option>
-            <option value="edit" ?selected=${this.mode === "edit"}>Edit a copy of this board</option>
-            <option value="refine" ?selected=${this.mode === "refine"} ?disabled=${!draft}>Refine the generated draft</option>
+        <label>Access method for new boards
+          <select data-testid="design-access" ?disabled=${this.busy}
+            @change=${e=>{this.access=e.target.value;}}>
+            <option value="pointer" ?selected=${this.access==="pointer"}>Mouse / touch</option>
+            <option value="dwell" ?selected=${this.access==="dwell"}>Pointer dwell</option>
+            <option value="two-switch" ?selected=${this.access==="two-switch"}>Two-switch scanning</option>
           </select>
         </label>
-        <label>Access method
-          <select data-testid="design-access" ?disabled=${this.busy} @change=${e => { this.access = e.target.value; }}>
-            <option value="pointer" ?selected=${this.access === "pointer"}>Mouse / touch</option>
-            <option value="two-switch" ?selected=${this.access === "two-switch"}>Two-switch: Space advances, Enter selects</option>
-            <option value="dwell" ?selected=${this.access === "dwell"}>Pointer dwell</option>
-            <option value="preserve" ?selected=${this.access === "preserve"}>Keep the existing access settings when editing</option>
-          </select>
-        </label>
-        <label>Interface requirements
-          <textarea class="ai-input ai-textarea" data-testid="design-prompt" rows="5" maxlength="3000"
-            placeholder="Example: 18 restaurant phrases across Food and Drinks tabs, three columns, message bar, Speak and Clear, blue focus cue."
+        <label>Describe a new board or a change to this draft
+          <textarea data-testid="design-prompt" class="ai-input ai-textarea" rows="4" maxlength="2500"
+            placeholder="Make a QWERTY keyboard with Speak and Clear, or: make the keyboard buttons blue."
             .value=${this.description} ?disabled=${this.busy}
-            @input=${e => { this.description = e.target.value; }}
-            @keydown=${e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); this.generate(); } }}></textarea>
+            @input=${e=>{this.description=e.target.value;}}
+            @keydown=${e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();this.generate();}}}
+          ></textarea>
         </label>
-        <p class="ai-key-note">Uses your saved Groq key. Qwen is selected for this feature only.
-          Editing sends this board's design and vocabulary to Groq, not API keys, logs or audio.
-          Start with a small board to stay within free-tier limits.</p>
-        <button type="button" class="ai-generate-btn" data-testid="design-generate" ?disabled=${this.busy}
-          @click=${() => this.generate()}>${this.busy ? "Generating..." : "Generate draft"}</button>
-        ${this.busy && this.abort ? html`<button type="button" @click=${() => this.abort.abort()}>Cancel</button>` : html``}
-        ${this.status ? html`<p role="status">${this.status}</p>` : html``}
-        ${this.error ? html`<pre class="ai-error" role="alert" style="white-space:pre-wrap">${this.error}</pre>` : html``}
-        ${this.rejected ? html`<button type="button" ?disabled=${this.busy} @click=${() => this.generate(true)}>Repair rejected draft (one more request)</button>` : html``}
-        ${draft ? html`<section data-testid="design-draft">
+        <p class="ai-key-note">Groq selects small editing commands. It does not rewrite the six design files.
+          No API key is included in exported boards.</p>
+        <button type="button" data-testid="design-generate" class="ai-generate-btn"
+          ?disabled=${this.busy} @click=${()=>this.generate()}>
+          ${this.busy?"Applying instructions…":"Apply AI instructions to draft"}
+        </button>
+        ${this.busy&&this.abort?html`<button type="button" @click=${()=>this.abort.abort()}>Cancel</button>`:html``}
+        ${this.status?html`<p role="status">${this.status}</p>`:html``}
+        ${this.error?html`<pre class="ai-error" role="alert" style="white-space:pre-wrap">${this.error}</pre>`:html``}
+        ${draft?html`<section data-testid="design-draft">
           <h3>${draft.title}</h3><p>${draft.summary}</p>
-          <p>${draft.design.content.length} content rows; ${layout.filter(n => n.className === "Grid").length} grids;
-            ${layout.filter(n => n.className === "TabPanel").length} tabs;
-            ${draft.design.actions.children.length} action rules;
-            ${draft.design.method.children.length} methods;
-            ${draft.design.pattern.children.length} patterns;
-            ${draft.design.cues.children.length} cues.</p>
-          <p>${draft.design.content.map(row => row.label).join(" | ")}</p>
-          ${draft.warnings.map(text => html`<p class="ai-key-note">${text}</p>`)}
-          <button type="button" data-testid="design-open" ?disabled=${this.busy} @click=${() => this.openCopy()}>Open as a new board</button>
-          <button type="button" data-testid="design-download" ?disabled=${this.busy} @click=${() => this.download()}>Download .osdpi</button>
-          <p class="ai-key-note">Open the copy, then use OS-DPI's Preview to test its controls and scanning before use.</p>
-          <details><summary>Inspect the six native sections</summary>
-            ${SECTION_NAMES.map(name => html`<details><summary>${name}.json</summary><pre style="white-space:pre-wrap;max-height:20rem;overflow:auto">${JSON.stringify(draft.design[name], null, 2)}</pre></details>`)}
+          <div class="ai-key-actions">
+            <button type="button" data-testid="design-undo" ?disabled=${this.busy||!this.history.length}
+              @click=${()=>this.undo()}>Undo</button>
+            <button type="button" data-testid="design-redo" ?disabled=${this.busy||!this.future.length}
+              @click=${()=>this.redo()}>Redo</button>
+            <button type="button" data-testid="design-open" ?disabled=${this.busy}
+              @click=${()=>this.openCopy()}>Open as new board</button>
+            <button type="button" data-testid="design-download" ?disabled=${this.busy}
+              @click=${()=>this.download()}>Download .osdpi</button>
+          </div>
+          <p class="ai-key-note">For advanced manual changes, open a copy and use OS-DPI's full
+            Layout, Content, Actions, Methods, Patterns and Cues editors.</p>
+          ${grid?html`<fieldset class="ai-key-steps">
+            <legend>Quick layout edit</legend>
+            <label>Grid
+              <select @change=${e=>{this.gridName=e.target.value;this.update();}}>
+                ${grids.map(g=>html`<option value=${g.props.name} ?selected=${grid===g}>${g.props.name}</option>`)}
+              </select>
+            </label>
+            <label>Columns
+              <input type="number" min="1" max="12" .value=${String(grid.props.columns)}
+                @change=${e=>this.manual("set_columns",grid.props.name,null,Number(e.target.value))}/>
+            </label>
+            <label>Button color
+              <input type="text" .value=${String(grid.props.buttonColor||"#e9f2fb")}
+                @change=${e=>this.manual("set_button_color",grid.props.name,null,e.target.value.trim())}/>
+            </label>
+          </fieldset>`:html``}
+          ${row?html`<fieldset class="ai-key-steps">
+            <legend>Quick content edit</legend>
+            <label>Item
+              <select @change=${e=>{this.rowIndex=Number(e.target.value);this.update();}}>
+                ${rows.map((r,i)=>html`<option value=${String(i)} ?selected=${i===idx}>${i+1}. ${r.label}</option>`)}
+              </select>
+            </label>
+            <label>Button label
+              <input type="text" .value=${String(row.label)}
+                @change=${e=>this.manual("rename_word","index:"+idx,e.target.value.trim())}/>
+            </label>
+          </fieldset>`:html``}
+          <h4>Interactive test preview</h4>
+          <p class="ai-key-note">Press keys to test composition and navigation. Preview uses browser speech,
+            not the saved ElevenLabs voice. External socket methods are disabled.</p>
+          <iframe title="OS-DPI native preview" data-testid="design-preview" sandbox="allow-same-origin allow-scripts"
+            style="display:block;width:100%;height:450px;border:1px solid #aaa;border-radius:6px"
+            src=${import.meta.env.BASE_URL+"ai-preview.html"}
+            ref=${frame=>{if(frame&&frame!==this.frame){this.frame=frame;this.frameReady=false;}}}></iframe>
+          <p class="ai-key-note" data-testid="design-preview-text">Preview display: ${this.previewText}</p>
+          ${draft.warnings?.slice(0,5).map(w=>html`<p class="ai-key-note">${w}</p>`)}
+          <details><summary>Inspect native sections</summary>
+            ${SECTION_NAMES.map(name=>html`<details><summary>${name}.json</summary>
+              <pre style="white-space:pre-wrap;max-height:15rem;overflow:auto">${JSON.stringify(draft.design[name],null,2)}</pre>
+            </details>`)}
           </details>
-        </section>` : html``}
-        ${this.usage ? html`<p class="ai-key-note">Request usage: ${this.usage.total_tokens ?? "unknown"} tokens.</p>` : html``}
+        </section>`:html``}
+        ${this.usage?html`<p class="ai-key-note">Groq tokens: ${this.usage.total_tokens??"not reported"}</p>`:html``}
       </div>
     </details>`;
   }
