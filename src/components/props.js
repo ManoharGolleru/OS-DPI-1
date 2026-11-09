@@ -902,19 +902,32 @@ export class Voice extends Prop {
   }
 
   input() {
-    return this.labeled(
-      html`<select
+    return html`<div>
+      ${this.labeled(html`<select
         is="select-voice"
         .value=${this._value}
         id=${this.id}
         @change=${(/** @type {InputEventWithTarget} */ event) => {
-          this._value = event.target.value;
+          this.set(event.target.value);
           this.update();
         }}
       >
         <option value="">Default</option>
-      </select>`,
-    );
+      </select>`)}
+      <label class="labeledInput">
+        <span class="labelText">Custom ElevenLabs Voice ID</span>
+        <input
+          type="text"
+          placeholder="Paste ElevenLabs Voice ID"
+          .value=${this._value.startsWith("eleven:") ? this._value.slice(7) : ""}
+          @change=${(/** @type {InputEventWithTarget} */ event) => {
+            const id = event.target.value.trim();
+            this.set(id ? `eleven:${id}` : "");
+            this.update();
+          }}
+        />
+      </label>
+    </div>`;
   }
 }
 /** @extends {Prop<string>} */
