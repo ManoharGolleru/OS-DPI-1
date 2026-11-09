@@ -120,3 +120,50 @@ test("unsupported Groq command returns an error without a draft or repair loop",
   await expect(page.getByTestId("design-draft")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+
+test("file-picker import and edit preserve embedded media and the original",async({page})=>{
+  const {errors}=await setup(page);
+  await makeKeyboard(page);
+  const bytes=await page.evaluate(async()=>{
+    const p=fixture.panel;
+    const content=p.draft.design.content;
+    content[0].symbol="key.png";
+    p.media.set("key.png",new Blob([137,80,78,71,1,2,3,4],{type:"image/png"}));
+    const blob=await fixture.packDesign(p.draft.design,p.sourceName,p.media);
+    return Array.from(new Uint8Array(await blob.arrayBuffer()));
+  });
+  await page.evaluate(()=>Object.defineProperty(window,"showOpenFilePicker",{configurable:true,value:undefined}));
+  const picker=page.waitForEvent("filechooser");
+  await page.getByTestId("design-import").click();
+  const chooser=await picker;
+  await chooser.setFiles({name:"student-keyboard.osdpi",mimeType:"application/zip",buffer:Buffer.from(bytes)});
+  await expect(page.getByTestId("design-draft")).toContainText("student-keyboard");
+  const result=await page.evaluate(async()=>{
+    const p=fixture.panel;
+    p.manual("rename_word","index:1","Letter W");
+    const file=await fixture.packDesign(p.draft.design,p.sourceName,p.media);
+    const read=await fixture.unPackDesign(file);
+    return {
+      modified:read.content[1].label,
+      originalSymbol:read.content[0].symbol,
+      assetName:read.media?.[0]?.name,
+      assetBytes:read.media?.[0]?.content?.size,
+      original:fixture.Globals.data.contentRows[1].label,
+    };
+  });
+  expect(result).toEqual({modified:"Letter W",originalSymbol:"key.png",assetName:"key.png",assetBytes:8,original:"I would like"});
+  expect(errors).toEqual([]);
+});
+
+test("new AI keyboard honors selected two-switch access even if model omits it",async({page})=>{
+  const {errors}=await setup(page,[{op:"create_keyboard",target:null,text:null,value:false,items:[]}]);
+  await page.getByTestId("design-access").selectOption("two-switch");
+  await page.getByTestId("design-prompt").fill("Build a QWERTY keyboard that scans with two switches.");
+  await page.getByTestId("design-generate").click();
+  await expect(page.getByTestId("design-draft")).toBeVisible();
+  const method=await page.evaluate(()=>fixture.panel.draft.design.method.children[0]);
+  expect(method.props.Pattern).toBe("scan");
+  expect(method.children.filter(n=>n.className==="KeyHandler")).toHaveLength(2);
+  expect(errors).toEqual([]);
+});
