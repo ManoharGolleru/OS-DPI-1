@@ -1,7 +1,7 @@
 import {AIError, getAIKey} from "./index";
 
 /** One Groq local-tool turn. Other AI features keep their existing request path. */
-export async function aiToolTurn({model, messages, tools, signal, maxTokens = 2200}) {
+export async function aiToolTurn({model, messages, tools, signal, maxTokens = 2200, toolChoice="required"}) {
   const key = getAIKey("groq");
   if (!key) throw new AIError("no-key", "Add your Groq key under Content > Keys.");
   let response;
@@ -9,8 +9,9 @@ export async function aiToolTurn({model, messages, tools, signal, maxTokens = 22
     response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST", signal,
       headers: {"Content-Type":"application/json", Authorization:`Bearer ${key}`},
-      body: JSON.stringify({model,messages,tools,tool_choice:"auto",parallel_tool_calls:false,
-        reasoning_effort:"low",max_completion_tokens:maxTokens}),
+      body: JSON.stringify({model,messages,tools,tool_choice:toolChoice,parallel_tool_calls:false,
+        reasoning_effort:"medium",max_completion_tokens:maxTokens,
+        ...(model.startsWith("qwen/") ? {reasoning_format:"hidden"} : {})}),
     });
   } catch(error) {
     if(signal?.aborted) throw error;
