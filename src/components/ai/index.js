@@ -14,8 +14,12 @@
 /**
  * @typedef {Object} AIRequest
  * @property {string} prompt - the full user prompt
+ * @property {string} [providerId] - per-request override, does not change global settings
+ * @property {string} [model]
+ * @property {string} [system]
+ * @property {(usage: Object) => void} [onUsage]
  * @property {boolean} [json] - the reply must be a single JSON object
- * @property {"low" | "medium" | "high"} [effort] - how hard reasoning
+ * @property {"none" | "low" | "medium" | "high"} [effort] - how hard reasoning
  *   models should think; "low" keeps interactive features fast
  * @property {number} [maxTokens]
  * @property {AbortSignal} [signal]
@@ -180,9 +184,10 @@ export function aiKeyPhrase() {
  * @returns {Promise<string>}
  */
 export async function aiComplete(request) {
-  const provider = aiProvider();
+  const provider = request.providerId ? providers.get(request.providerId) : aiProvider();
+  if (!provider) throw new AIError("bad-response", "Unknown AI provider.");
   const config = {
-    model: getAIModel(provider.id),
+    model: request.model || getAIModel(provider.id),
     baseUrl: getAIBaseUrl(provider.id).replace(/\/+$/, ""),
     key: getAIKey(provider.id),
   };
@@ -227,17 +232,17 @@ async function openAICompatible(config, request, options = {}) {
   /** @type {Object<string, any>} */
   const body = {
     model: config.model,
-    messages: [{ role: "user", content: request.prompt }],
+    messages: [...(request.system ? [{role: "system", content: request.system}] : []), { role: "user", content: request.prompt }],
   };
   if (request.json) body.response_format = { type: "json_object" };
   // Reasoning models think before answering; without a low effort they can
   // spend the whole token budget thinking and return nothing. Other models
   // reject the parameter, so only send it to the families that take it.
-  if (request.effort && /gpt-oss|^gpt-5|^o\d/.test(config.model)) {
+  if (request.effort && /gpt-oss|^gpt-5|^o\d|^qwen\/qwen3\.8-27b$/.test(config.model)) {
     body.reasoning_effort = request.effort;
   }
   if (request.maxTokens) {
-    body[options.maxTokensField || "max_tokens"] = request.maxTokens;
+    body[options.maxTokensField || (config.baseUrl.includes("api.groq.com") ? "max_completion_tokens" : "max_tokens")] = request.maxTokens;
   }
 
   /** @type {Object<string,string>} */
@@ -264,7 +269,8 @@ async function openAICompatible(config, request, options = {}) {
       throw new AIError("auth", "The API key was rejected.");
     }
     if (response.status === 429) {
-      throw new AIError("rate-limit", "Rate limit reached.");
+      const delay = response.headers.get("retry-after");
+      throw new AIError("rate-limit", `Rate limit reached${delay ? `; retry after ${delay} seconds` : ""}.`);
     }
     const err = await response.json().catch(() => ({}));
     throw new AIError(
@@ -273,6 +279,9 @@ async function openAICompatible(config, request, options = {}) {
     );
   }
   const data = await response.json();
+  if (data.usage && request.onUsage) request.onUsage(data.usage);
+  if (data.choices?.[0]?.finish_reason === "length") throw new AIError("bad-response", "The model response was cut off. Request a smaller interface. No board was changed.");
+  if (data.choices?.[0]?.message?.refusal) throw new AIError("refused", "The model declined the request.");
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new AIError("bad-response", "Empty reply from the AI.");
   return text;
