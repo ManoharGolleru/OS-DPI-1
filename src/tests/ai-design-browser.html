@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>AI design regression fixture</title></head><body>
+<div id="cues"></div><div id="UI" style="height:400px"></div><div id="designer" style="display:block;position:relative"><div id="test-panel"></div></div>
+<script>
+  // Speech is stubbed; no voice provider or paid service is called by tests.
+  speechSynthesis.getVoices = () => [{voiceURI:"test",name:"Test voice",lang:"en-US",default:true}];
+  speechSynthesis.speak = u => { window.lastSpoken = u.text; };
+</script>
+<script type="module" src="./ai-design-harness.js"></script>
+</body></html>
