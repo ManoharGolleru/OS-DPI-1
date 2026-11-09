@@ -405,34 +405,20 @@ export class DB {
    * @returns {Promise<boolean>}
    */
   async readDesignFromBlob(blob, filename, etag = "") {
-    const db = await this.dbPromise;
+    const design = await unPackDesign(blob); // validate before changing names or records
+    const database = await this.dbPromise;
+    const name = etag ? filename.replace(/\.(zip|osdpi)$/, "") : await this.uniqueName(filename);
+    const tx = database.transaction(["store5", "media", "saved"], "readwrite");
+    for (const [type, data] of Object.entries(design)) {
+      if (type === "media") {
+        for (const asset of data) tx.objectStore("media").put({name:asset.name,content:asset.content},[name,asset.name]);
+      } else tx.objectStore("store5").put({name,type,data});
+    }
+    tx.objectStore("saved").put({name,etag});
+    await tx.done;
     this.fileName = filename;
-
-    // normalize the fileName to make the design name
-    let name = this.fileName;
-    // make sure it is unique
-    if (!etag) {
-      name = await this.uniqueName(name);
-    } else {
-      name = name.replace(/\.(zip|osdpi)$/, "");
-    }
-
     this.designName = name;
-
-    const design = await unPackDesign(blob);
-    // copy the design into the db
-    for (const [key, value] of Object.entries(design)) {
-      if (key == "media" && design.media) {
-        for (const media of design.media) {
-          await this.addMedia(media.content, media.name);
-        }
-      } else {
-        await this.write(key, value);
-      }
-    }
-
-    await db.put("saved", { name: this.designName, etag });
-    this.notify({ action: "update", name: this.designName });
+    this.notify({action:"update",name});
     return true;
   }
 
@@ -451,7 +437,7 @@ export class DB {
     // collect the parts of the design
     const layout = Globals.layout?.toObject() ?? {};
     const actions = Globals.actions?.toObject() ?? [];
-    const content = await this.read("content");
+    const content = Globals.data?.contentRows ?? await this.read("content");
     const method = Globals.methods?.toObject() ?? {};
     const pattern = Globals.patterns?.toObject() ?? {};
     const cues = Globals.cues?.toObject() ?? {};
@@ -465,9 +451,15 @@ export class DB {
       "cues.json": strToU8(JSON.stringify(cues)),
     };
 
-    const mediaKeys = (await db.getAllKeys("media")).filter((pair) =>
-      Object.values(pair).includes(this.designName),
-    );
+    // Retain optional native sections (for example notes) on export.
+    for (const record of await db.getAllFromIndex("store5", "by-name", this.designName)) {
+      const filename = record.type + ".json";
+      if (!(filename in zipargs)) {
+        assertArchiveName(filename);
+        zipargs[filename] = strToU8(JSON.stringify(record.data));
+      }
+    }
+    const mediaKeys = (await db.getAllKeys("media")).filter(pair => pair[0] === this.designName);
 
     // add the encoded image to the zipargs
     for (const key of mediaKeys) {
@@ -476,6 +468,8 @@ export class DB {
         const contentBuf = await record.content.arrayBuffer();
         const contentArray = new Uint8Array(contentBuf);
         const mediaKey = /** @type {[string, string]} */ (key);
+        assertArchiveName(mediaKey[1]);
+        if (Object.hasOwn(zipargs, mediaKey[1])) throw new Error("A resource conflicts with a native section: " + mediaKey[1]);
         (/** @type {Record<string, Uint8Array>} */ (zipargs))[mediaKey[1]] = contentArray;
       }
     }
@@ -676,45 +670,39 @@ function readAsArrayBuffer(blob) {
   });
 }
 
-/** Unpack a design from a blob
- *
- * @param {Blob} blob
- * @returns {Promise<DesignObject>}
- */
+/** Reject unsafe names and unreasonably large archives without discarding resources. */
+function assertArchiveName(name) {
+  if (!name || /^[\/\\]/.test(name) || /\\|[\x00-\x1f]/.test(name) ||
+      name.split("/").some(p => !p || p === "." || p === "..") || ["__proto__","constructor","prototype"].includes(name))
+    throw new Error("Unsafe archive entry: " + name);
+}
 export async function unPackDesign(blob) {
-  const zippedBuf = await readAsArrayBuffer(blob);
-  const zippedArray = new Uint8Array(zippedBuf);
-  const unzipped = unzipSync(zippedArray);
-
-  /** @type {DesignObject} */
-  const result = {};
-  const media = [];
-  for (const fname in unzipped) {
-    const mimetype = mime(fname) || "application/octet-stream";
-    if (mimetype == "application/json") {
-      const text = strFromU8(unzipped[fname]);
-      let obj = {};
-      try {
-        obj = JSON.parse(text);
-        let type = fname.split(".")[0];
-        (/** @type {Record<string, any>} */ (result))[type] = obj;
-      } catch (e) {
-        console.trace(e);
-      }
-    } else if (
-      mimetype.startsWith("image") ||
-      mimetype.startsWith("audio") ||
-      mimetype.startsWith("video")
-    ) {
-      const blob = new Blob([unzipped[fname]], {
-        type: mimetype,
-      });
-      media.push({ name: fname, content: blob });
+  if (blob.size > 100 * 1024 * 1024) throw new Error("The design exceeds the 100 MB import limit.");
+  const input = new Uint8Array(await blob.arrayBuffer());
+  let total = 0, count = 0;
+  const names = new Set();
+  const unzipped = unzipSync(input, {filter: entry => {
+    if (entry.name.endsWith("/")) return false;
+    assertArchiveName(entry.name);
+    if (names.has(entry.name)) throw new Error("Duplicate archive entry: " + entry.name);
+    names.add(entry.name);
+    total += entry.originalSize;
+    if (++count > 4096 || total > 200 * 1024 * 1024) throw new Error("The expanded design exceeds the safe import limit.");
+    return true;
+  }});
+  const result = {}, media = [];
+  const nativeNames = new Set(["layout","content","actions","method","pattern","cues","notes"]);
+  for (const [filename,bytes] of Object.entries(unzipped)) {
+    const section = filename.replace(/\.json$/, "");
+    if (filename === section + ".json" && nativeNames.has(section)) {
+      try { result[section] = JSON.parse(strFromU8(bytes)); }
+      catch { throw new Error("Invalid JSON in " + filename + ". Nothing was imported."); }
+    } else {
+      // Images, audio, videos, fonts and extra files survive import/export intact.
+      media.push({name:filename,content:new Blob([bytes],{type:mime(filename)||"application/octet-stream"})});
     }
   }
-  if (media.length > 0) {
-    result.media = media;
-  }
+  if (media.length) result.media = media;
   return result;
 }
 

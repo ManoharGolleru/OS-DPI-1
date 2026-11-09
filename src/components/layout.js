@@ -188,6 +188,10 @@ export class Layout extends DesignerPanel {
     }
     return html`<div class="layout-simple">
       ${outline}${empty ? html`` : html`${this.boardsBar()}${voiceSetting(page)}`}${body}
+      <button type="button" class="piece-action" @click=${() => {
+        Globals.content.authoring.open = true;
+        Globals.designer.switchTab("Content");
+      }}>Ask AI about ${selected ? "this piece" : "this interface"}</button>
     </div>`;
   }
 
