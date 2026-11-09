@@ -1314,7 +1314,7 @@ function voiceSetting(page) {
       />
     </div>
     ${isEleven(voice.value)
-      ? html`<p class="piece-hint ${info?.status === "error" ? "voice-problem" : "voice-ready"}" role="status">
+      ? html`<p class=${info?.status === "error" ? "piece-hint voice-problem" : "piece-hint voice-ready"} role="status">
           ${info?.status === "ready"
             ? `✓ Ready to use: ${info.name || "Custom ElevenLabs voice"}. Speech playback started successfully.`
             : info?.status === "verified"
