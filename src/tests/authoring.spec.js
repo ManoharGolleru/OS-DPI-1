@@ -306,9 +306,10 @@ test('normal OS-DPI editor displays the accepted keyboard in its actual Preview'
     panel:document.querySelector('[data-testid="author-run"]')?.textContent,
     body:document.body.className,
   }))),errors,requests.length,requests.map((req,i)=>({turn:i+1,toolResults:req.messages.filter(m=>m.role==='tool').map(m=>m.content.slice(0,1200))})));
-  await expect(page.locator('#UI').getByRole('button',{name:'h',exact:true})).toBeVisible({timeout:15000});
+  await expect.poll(()=>page.locator('#UI button').count()).toBeGreaterThan(26);
   expect(requests).toHaveLength(2);
   await page.getByTestId('author-preview').click();
+  await expect(page.locator('#UI').getByRole('button',{name:'h',exact:true})).toBeVisible({timeout:15000});
   await page.locator('#UI').getByRole('button',{name:'h',exact:true}).click();
   await page.locator('#UI').getByRole('button',{name:'i',exact:true}).click();
   await expect(page.locator('#UI')).toContainText('hi');
