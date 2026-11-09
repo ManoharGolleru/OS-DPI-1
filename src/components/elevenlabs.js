@@ -61,6 +61,9 @@ export function setElevenKey(key) {
     // storage blocked; the key just isn't remembered
   }
   elevenProblem = "";
+  voiceKeyVersion++;
+  checkedVoices.clear();
+  pendingVoiceChecks.clear();
   voiceList = null;
   // a load still going with the old key is dropped, so the new key's
   // voices always come
@@ -86,6 +89,107 @@ function setProblem(problem) {
 let voiceList = null;
 /** @type {Promise<void> | null} */
 let loadingVoices = null;
+
+/**
+ * Metadata for a selected ElevenLabs voice. This is only a verification
+ * result, not a stored API key or a change to the board's voice ID.
+ * @typedef {{status: "checking" | "verified" | "ready" | "error", name: string, error: string}} VoiceInfo
+ */
+/** @type {Map<string, VoiceInfo>} */
+const checkedVoices = new Map();
+/** @type {Map<string, number>} */
+const pendingVoiceChecks = new Map();
+let voiceCheckSequence = 0;
+let voiceKeyVersion = 0;
+
+/** @param {string} voiceURI @returns {VoiceInfo | null} */
+export function elevenVoiceInfo(voiceURI) {
+  if (!isEleven(voiceURI)) return null;
+  return checkedVoices.get(voiceURI.slice(ELEVEN.length)) ?? null;
+}
+
+function announceVoiceCheck() {
+  document.dispatchEvent(new Event("os-dpi-voices"));
+  Globals.state?.update();
+}
+
+/**
+ * Resolve a manually entered voice ID to its real name using the key.
+ * A lookup is done once for each ID/key, unless the user explicitly retries.
+ * @param {string} voiceURI
+ * @param {boolean} [retry]
+ */
+export function checkElevenVoice(voiceURI, retry = false) {
+  if (!isEleven(voiceURI)) return;
+  const id = voiceURI.slice(ELEVEN.length).trim();
+  if (!id || (checkedVoices.has(id) && !retry)) return;
+
+  const key = getElevenKey();
+  const version = voiceKeyVersion;
+  const sequence = ++voiceCheckSequence;
+  pendingVoiceChecks.set(id, sequence);
+  checkedVoices.set(id, { status: "checking", name: "", error: "" });
+
+  if (!key) {
+    checkedVoices.set(id, {
+      status: "error", name: "",
+      error: "Add an ElevenLabs API key under Content → Keys.",
+    });
+    announceVoiceCheck();
+    return;
+  }
+
+  const current = () =>
+    version === voiceKeyVersion && pendingVoiceChecks.get(id) === sequence;
+
+  fetch(`${API}/voices/${encodeURIComponent(id)}`, {
+    headers: { "xi-api-key": key },
+  })
+    .then(async (response) => {
+      const result = await response.json().catch(() => ({}));
+      if (!current()) return;
+      if (response.ok && result.voice_id === id) {
+        const previous = checkedVoices.get(id);
+        checkedVoices.set(id, {
+          status: previous?.status === "ready" ? "ready" : "verified",
+          name: String(result.name || "").trim() || "Custom ElevenLabs voice",
+          error: "",
+        });
+      } else {
+        const detail = String(result.detail?.status || "");
+        const error =
+          response.status === 401 || response.status === 403
+            ? "Voice lookup denied. Check the API key's Voices: Read permission."
+            : detail === "voice_not_found" || response.status === 404
+              ? "Voice not found for this API key. Check the ID and workspace."
+              : response.status === 429
+                ? "ElevenLabs rate limit reached. Enter the ID again to retry."
+                : `Unable to verify voice (HTTP ${response.status}). Enter the ID again to retry.`;
+        checkedVoices.set(id, { status: "error", name: "", error });
+      }
+      announceVoiceCheck();
+    })
+    .catch(() => {
+      if (!current()) return;
+      checkedVoices.set(id, {
+        status: "error", name: "",
+        error: "Couldn't connect to ElevenLabs. Enter the ID again to retry.",
+      });
+      announceVoiceCheck();
+    })
+    .finally(() => {
+      if (current()) pendingVoiceChecks.delete(id);
+    });
+}
+
+/** Called only once playback starts, not merely when the ID is recognized.
+ * @param {string} voiceId */
+function markVoicePlayed(voiceId) {
+  const info = checkedVoices.get(voiceId);
+  if (!info || info.status === "ready") return;
+  checkedVoices.set(voiceId, { status: "ready", name: info.name, error: "" });
+  announceVoiceCheck();
+}
 
 /** The voices once loaded (none before) */
 export function elevenVoices() {
@@ -191,7 +295,9 @@ export async function speakEleven(text, voiceURI, tone, volume, done = () => {})
   }
   if (request !== latest) return true; // something newer was said
   setProblem("");
-  return play(clip, Math.min(1, Math.max(0, style.volume * volume)), done);
+  const played = await play(clip, Math.min(1, Math.max(0, style.volume * volume)), done);
+  if (played && request === latest) markVoicePlayed(voice);
+  return played;
 }
 
 /**
