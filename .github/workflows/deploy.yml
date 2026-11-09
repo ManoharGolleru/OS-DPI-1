@@ -42,7 +42,7 @@ jobs:
       - name: Include repository examples
         run: |
           mkdir -p src/dist/examples
-          cp -R examples/. src/dist/examples/
+          cp -R examples/updated src/dist/examples/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
