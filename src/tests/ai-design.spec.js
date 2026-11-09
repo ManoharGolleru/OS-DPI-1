@@ -2,7 +2,9 @@ import {test, expect} from "@playwright/test";
 
 async function setup(page, mutate = null) {
   const errors = [];
-  page.on("pageerror", e => errors.push(e.message));
+  page.on("pageerror", e => { errors.push(e.message); console.error("Browser startup/runtime:", e.stack || e.message); });
+  page.on("console", message => { if(message.type() === "error") console.error("Browser console:", message.text()); });
+  page.on("response", response => { if(response.status() >= 400) console.error("Browser HTTP:", response.status(), response.url()); });
   const calls = [];
   await page.route("https://api.groq.com/**", async route => {
     calls.push(route.request().postDataJSON());
@@ -11,7 +13,8 @@ async function setup(page, mutate = null) {
     await route.fulfill({json:{choices:[{finish_reason:"stop",message:{content:JSON.stringify({title:"Restaurant",summary:"Test native design",design})}}],usage:{total_tokens:1234}}});
   });
   await page.goto("/OS-DPI-1/tests/ai-design-browser.html");
-  await page.waitForFunction(() => !!window.fixture);
+  try { await page.waitForFunction(() => !!window.fixture, null, {timeout:10000}); }
+  catch(error) { throw new Error(`Fixture startup failed: ${errors.join("; ") || await page.locator("body").innerText()}`); }
   return {errors, calls};
 }
 async function generate(page) {
