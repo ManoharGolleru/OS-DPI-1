@@ -1270,7 +1270,7 @@ function voiceSetting(page) {
   const all = (node) =>
     node.className === "Speech" ? [node] : node.children.flatMap(all);
   if (!(voice instanceof Props.Voice)) return html``;
-  return html`<div class="piece-field board-voice">
+  return html`<div class="piece-field">
       <span>Voice</span>
       <select
         is="select-voice"
@@ -1290,6 +1290,21 @@ function voiceSetting(page) {
       >
         ▶
       </button>
+    </div>
+    <div class="piece-field board-voice">
+      <span>Custom ElevenLabs Voice ID</span>
+      <input
+        type="text"
+        placeholder="Paste ElevenLabs Voice ID"
+        aria-label="Custom ElevenLabs Voice ID"
+        .value=${isEleven(voice.value) ? voice.value.slice("eleven:".length) : ""}
+        @change=${(/** @type {Event} */ e) => {
+          const id = /** @type {HTMLInputElement} */ (e.target).value.trim();
+          const selected = id ? `eleven:${id}` : "";
+          for (const each of all(page)) each["voiceURI"].set(selected);
+          speech?.update();
+        }}
+      />
     </div>
     ${naturalVoices === false
       ? html`<p class="piece-hint">
