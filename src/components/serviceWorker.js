@@ -27,7 +27,7 @@ function signalUpdateAvailable() {
 if (import.meta.env.PROD && navigator.serviceWorker) {
   window.addEventListener("load", async () => {
     registration = await navigator.serviceWorker.register("service-worker.js", {
-      scope: "/OS-DPI/",
+      scope: "/OS-DPI-1/",
     });
     // ensure the case when the updatefound event was missed is also handled
     // by re-invoking the prompt when there's a waiting Service Worker
