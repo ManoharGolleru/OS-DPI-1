@@ -65,3 +65,15 @@ test("access changes use a registered native method and cues",()=>{
   assert.equal(out.method.children[0].props.Pattern,"scan");
   assert.deepEqual(validateDesign(out,catalog).errors,[]);
 });
+
+test("letter editing keeps displayed keyboard keys and insertion behavior in sync",()=>{
+  const d=keyboardDesign();
+  const out=applyDesignOperations(d,[
+    {op:"rename_word",target:"Q",text:"Z"},
+    {op:"add_words",target:"keyboard_0",items:["?"]},
+  ]);
+  assert.equal(out.content[0].character,"z");
+  assert.equal(out.content.at(-1).character,"?");
+  assert.deepEqual(validateDesign(out,catalog).errors,[]);
+  assert.throws(()=>applyDesignOperations(d,[{op:"add_words",target:"keyboard_0",items:["hello"]}]),/single characters/);
+});

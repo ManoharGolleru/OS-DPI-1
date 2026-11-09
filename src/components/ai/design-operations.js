@@ -142,16 +142,27 @@ function operation(design,change) {
       const labels=words();
       const count=design.content.filter(r=>r.grid===target).length+labels.length;
       check(count<=100,"Grid is limited to 100 items.");
-      design.content.push(...labels.map(label=>({label,grid:target})));
+      const letterMode=design.actions.children.some(action=>
+        action.props.origin===target &&
+        walk(action).some(child=>child.className==="ActionUpdate" && child.props.newValue==="add_letter(#character)")
+      );
+      if(letterMode) check(labels.every(label=>label.length===1),"Typing-grid additions must be single characters.");
+      design.content.push(...labels.map(label=>letterMode
+        ? {label,character:label.toLowerCase(),grid:target}
+        : {label,grid:target}));
       if (g.props.fillItems!==false) g.props.rows=Math.max(Number(g.props.rows||1),Math.ceil(count/Number(g.props.columns)));
       break;
     }
     case "remove_word":
       design.content.splice(selectRow(design,target),1);
       break;
-    case "rename_word":
-      design.content[selectRow(design,target)].label=safeName(text,"replacement label");
+    case "rename_word": {
+      const row=design.content[selectRow(design,target)];
+      const label=safeName(text,"replacement label");
+      row.label=label;
+      if(typeof row.character==="string" && label.length===1) row.character=label.toLowerCase();
       break;
+    }
     case "set_control_label":
       locate(design,target,"Button").props.label=safeName(text,"button label");
       break;

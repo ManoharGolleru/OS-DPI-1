@@ -111,7 +111,8 @@ export class InterfaceDesigner {
       if(this.history.length>25)this.history.shift();
     }
     this.future=[];
-    this.draft={title:this.draft?.title||"AI Board",summary,design:result.design,warnings:result.warnings};
+    const title=this.draft?.title||(operations.some(op=>op.op==="create_keyboard")?"QWERTY Keyboard":"Communication Board");
+    this.draft={title,summary,design:result.design,warnings:result.warnings};
     this.revision++;
     this.error="";
     this.status=summary+". Test the draft below.";
