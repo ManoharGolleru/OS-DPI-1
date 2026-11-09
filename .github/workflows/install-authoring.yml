@@ -1,0 +1,52 @@
+name: Install and test native AI authoring
+on:
+  push:
+    branches: [feature/ai-authoring-redesign]
+    paths:
+      - '.authoring/source.tgz'
+      - '.github/workflows/install-authoring.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  install-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check and unpack native source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzf .authoring/source.tgz | grep -Ev '^(src/|tests/|docs/)' && exit 1 || true
+          tar -xzf .authoring/source.tgz
+      - name: Native authoring tests
+        run: node --test tests/authoring.test.mjs
+      - name: Install dependencies and build
+        working-directory: src
+        run: |
+          npm install
+          npm run build
+      - name: Install browser regression tools
+        working-directory: src
+        run: |
+          npm install --no-save --package-lock=false @playwright/test@1.65.0
+          npx playwright install --with-deps chromium
+      - name: Browser tests against the native OS-DPI runtime
+        working-directory: src
+        run: npx playwright test --config=tests/playwright.config.js
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .authoring/source.tgz
+          git add src docs tests
+          git commit -m "Implement native AI interface authoring with Groq tools and regression tests"
+          git push origin HEAD:feature/ai-authoring-redesign
