@@ -1,11 +1,12 @@
 import "@ungap/custom-elements";
-import "../components/index.js";
 import {render} from "uhtml";
-import Globals from "../globals.js";
-import {TreeBase} from "../components/treebase.js";
+// Match start.js: initialize the error/TreeBase cycle before the component barrel.
 import {Messages} from "../components/errors.js";
 import {Data} from "../data.js";
 import {State} from "../state.js";
+import "../components/index.js";
+import Globals from "../globals.js";
+import {TreeBase} from "../components/treebase.js";
 import db, {unPackDesign} from "../db.js";
 import {InterfaceDesigner} from "../components/ai/design-panel.js";
 import {starterDesign, validateDesign} from "../components/ai/design-format.js";
