@@ -19,6 +19,7 @@ export function nativeCatalog() {
   if(catalog)return catalog;
   const result={};
   for(const [name,Constructor] of TreeBase.nameToClass) {
+    // Construct fields, never call init/configure while reading metadata.
     const instance=new Constructor();
     const props={};
     for(const [key,p] of Object.entries(instance.props)) {
@@ -31,6 +32,7 @@ export function nativeCatalog() {
     const children=[...TreeBase.nameToClass].filter(([child,C])=>(instance.allowedChildren || []).some(p=>child===p || C.prototype instanceof (TreeBase.nameToClass.get(p) || class {}))).map(([n])=>n);
     result[name]={props,children};
   }
+  // Only types reachable from native design roots, not editor panels or error UI.
   const reachable=new Set(Object.values(ROOTS));
   const visit=name=>{for(const child of result[name]?.children || [])if(!reachable.has(child)){reachable.add(child);visit(child);}};
   for(const name of [...reachable])visit(name);
@@ -53,6 +55,7 @@ export function emptyNative() {
   const result=clone({layout:blankLayout,content:[],actions:blankActions,method:defaultMethods,pattern:defaultPatterns,cues:defaultCues});
   const schemas=nativeCatalog(), keys=new Set();
   for(const section of Object.keys(ROOTS))for(const n of walk(result[section])) {
+    // Use this build's current property definitions for new boards.
     n.props=Object.fromEntries(Object.entries(n.props).filter(([k])=>schemas[n.className]?.props[k]));
     if(n.props.Key){
       if(keys.has(n.props.Key))n.props.Key="native_"+n.className+"_"+keys.size;
@@ -61,6 +64,7 @@ export function emptyNative() {
   }
   return result;
 }
+
 export function documentSession(design, mediaNames=[]) {
   return new AuthoringDocument(design,nativeCatalog(),{expressionCheck:expressionError,mediaNames});
 }
@@ -68,6 +72,8 @@ export function fingerprint(value) {
   const sorted=v=>Array.isArray(v)?v.map(sorted):v&&typeof v==="object"?Object.fromEntries(Object.keys(v).filter(k=>k!=="id"&&k!=="_ref").sort().map(k=>[k,sorted(v[k])])):v;
   return JSON.stringify(sorted(value));
 }
+
+/** Optional reference material, not a gate on what the generic editor accepts. */
 export function examples(topic="") {
   const hints={
     keyboard:"Use recipe keyboard to insert native key rows and actions, or assemble custom keyboards with ordinary Grid/content/bind edits. Recipe is optional and every part remains editable.",
@@ -80,7 +86,9 @@ export function examples(topic="") {
   return topic ? hints[topic] || {available:Object.keys(hints)} : hints;
 }
 
-/** Optional native fragment; all resulting components remain generically editable. */
+/** A native keyboard fragment reuses the existing action helper and evaluator.
+ * This saves 26 repetitive model outputs, without restricting generic edits.
+ */
 export function keyboardRecipe(session,{parent="page",backspace=false,letters=["qwertyuiop","asdfghjkl","zxcvbnm"],color="#dbeafe",displayPosition="top"}={}) {
   if(!Array.isArray(letters)||!letters.length||letters.length>12 || letters.some(s=>typeof s!=="string"||!s.length||[...s].length>40))throw new Error("Keyboard rows must be nonempty character strings.");
   const destination=session.find(parent);
@@ -112,7 +120,7 @@ export function keyboardRecipe(session,{parent="page",backspace=false,letters=["
   return {...result,keyboard:ref("keyboard"),controls:ref("controls"),keys:ref("keys"),note:"Native components inserted; use ordinary edits to customize any part."};
 }
 
-/** Use the existing action compiler against temporary state, without external effects. */
+/** Execute existing expression functions against local test state, never live state or audio. */
 export function exercise(session,tests=[]) {
   if(!Array.isArray(tests)||tests.length>12)throw new Error("Provide at most 12 interaction checks.");
   const run=(expression,states,data)=>{
@@ -161,6 +169,7 @@ function nativeDraw() {
   Globals.methods.refresh();
   Globals.state.clearUpdated();
 }
+/** Install into the NORMAL editor. There is no alternative canvas or preview runtime. */
 export function installNative(design,{resetState=true}={}) {
   const before=Object.fromEntries(Object.entries(globalNames).map(([s,g])=>[s,Globals[g]]));
   const oldData=Globals.data, oldValues={...Globals.state.values}, panels=Globals.designer?.children;
@@ -199,6 +208,8 @@ export function installNative(design,{resetState=true}={}) {
     throw error;
   }
 }
+
+/** Save all six sections together and copy resources without touching the source. */
 export async function persistNative(design,{name,sourceName,copy=false}) {
   const database=await db.dbPromise;
   const media=copy?await database.getAllKeys("media"):[];
@@ -215,11 +226,13 @@ export async function persistNative(design,{name,sourceName,copy=false}) {
 export async function acceptNative(design,{sourceName,newCopy=true,title="AI interface"}={}) {
   const previous=captureNative(), oldName=db.designName;
   const name=newCopy?await db.uniqueName(title):oldName;
+  // The source must still match the request snapshot before this call.
   let installed;
   try {
     installed=installNative(design);
     await persistNative(installed,{name,sourceName:sourceName || oldName,copy:newCopy});
   }catch(e){
+    // installNative already rolls back a render failure. This also handles DB failures.
     if(fingerprint(captureNative())!==fingerprint(previous))installNative(previous);
     throw e;
   }

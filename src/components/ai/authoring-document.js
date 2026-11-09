@@ -85,7 +85,7 @@ export class AuthoringDocument {
     result._ref=spec.ref || `n${++this.sequence}`;
     assert(/^[A-Za-z][\w-]{0,80}$/.test(result._ref) && ![...SECTIONS,"page"].includes(result._ref), "Use a short unique reference, not a section name.");
     assert(!this.refs.has(result._ref), `Reference already exists: ${result._ref}`);
-    this.refs.set(result._ref,result);
+    this.refs.set(result._ref,result); // children may refer to the new parent
     result.children=(spec.children || []).map(child=>this.prepare(child));
     return result;
   }
@@ -141,6 +141,7 @@ export class AuthoringDocument {
           assert(origin,"This target needs a native name before attaching an action.");
           const rules=op.rules;
           assert(Array.isArray(rules)&&rules.length,"bind needs rules with condition and updates.");
+          // Only replace the explicitly targeted control's rules.
           this.design.actions.children=this.design.actions.children.filter(n=>n.props.origin!==origin);
           const added=rules.map(rule=>node("Action",{origin},[
             node("ActionCondition",{Condition:rule.condition || ""}),

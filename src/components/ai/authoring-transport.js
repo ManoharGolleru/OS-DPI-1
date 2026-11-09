@@ -32,6 +32,7 @@ export async function aiToolTurn({model, messages, tools, signal, maxTokens = 22
   const choice = data.choices?.[0];
   if(choice?.finish_reason === "length")throw new AIError("bad-response", "Groq stopped before completing its edits. No partial tool arguments were applied.");
   if(!choice?.message)throw new AIError("bad-response", "Groq returned no message.");
+  // Do not store hidden reasoning or authorization headers in the editor history.
   const {content,tool_calls} = choice.message;
   return {message:{role:"assistant",content:content || null,...(tool_calls?.length?{tool_calls}: {})},
     usage:data.usage || {}, rate};

@@ -201,7 +201,7 @@ test('new external service connections require consent before applying',async({p
 
 test('Qwen selection is per-authoring-request, not the conversational model',async({page})=>{
   const {requests}=await setup(page);
-  await page.getByText('Model and request details',{exact:true}).click();
+  await page.getByText('Model and checks',{exact:true}).click();
   await page.getByTestId('author-model').selectOption('qwen/qwen3.8-27b');await generate(page);
   expect(requests.every(r=>r.model==='qwen/qwen3.8-27b')).toBe(true);
   expect(await page.evaluate(()=>fixture.getAIModel('groq'))).toBe('openai/gpt-oss-120b');

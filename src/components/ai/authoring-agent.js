@@ -1,5 +1,6 @@
 import {aiToolTurn} from "./authoring-transport";
 import {examples, keyboardRecipe, exercise} from "./authoring-native";
+import {SECTIONS, walk} from "./authoring-document";
 
 export const MODELS = [["openai/gpt-oss-120b","GPT-OSS 120B"],["qwen/qwen3.8-27b","Qwen 3.8 27B"]];
 const obj = (properties,required=[]) => ({type:"object",properties,required,additionalProperties:false});
@@ -75,7 +76,7 @@ const wait=(ms,signal)=>new Promise((resolve,reject)=>{
   if(signal?.aborted)stop();else signal?.addEventListener("abort",stop,{once:true});
 });
 
-/** Bounded local-tool loop. Live state never changes during model work. */
+/** Bounded local-tool loop. The last valid live board never changes during it. */
 export async function authorInterface({session,request,selected=null,model=MODELS[0][0],signal,onProgress=()=>{},turn=aiToolTurn,history=[]}) {
   if(!MODELS.some(([id])=>id===model))throw new Error("Select a supported Groq authoring model.");
   const transcript=[], audit=[], usage={total_tokens:0,calls:0};
@@ -85,6 +86,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     const known=["Page","Stack","Grid","GridFilter","Button","Display","Speech","Action","ActionUpdate"];
     const task={request,selected,previousRequests:history.slice(-2),outline:session.outline(),availableComponents:Object.keys(session.catalog),media:[...session.mediaNames],
       completedEdits:session.changes.slice(-25),turn:round+1,turnsRemaining:8-round};
+    // Keep complete assistant/tool groups together; never send an orphaned tool response.
     const messages=[{role:"system",content:GUIDE+"\nCOMMON NATIVE SCHEMAS:\n"+JSON.stringify(compactSchemas(session.catalog,known))},
       {role:"user",content:JSON.stringify(redact(task))},...transcript.slice(-2).flat()];
     const estimate=Math.ceil((JSON.stringify(messages).length+JSON.stringify(TOOLS).length)/3.5)+1800;

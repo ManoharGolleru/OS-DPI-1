@@ -9,6 +9,7 @@ import {TreeBase} from "../components/treebase";
 import {Designer} from "../components/designer";
 import {ComponentsPanel} from "../components/layout";
 import {Content} from "../components/content";
+import {AuthoringPanel} from "../components/ai/authoring-panel";
 import {authorInterface,TOOLS} from "../components/ai/authoring-agent";
 import * as native from "../components/ai/authoring-native";
 import {AuthoringDocument,node,walk,clone} from "../components/ai/authoring-document";

@@ -6,7 +6,7 @@ import {captureNative,emptyNative,documentSession,fingerprint,acceptNative,insta
 import {authorInterface,MODELS} from "./authoring-agent";
 import "css/authoring.css";
 
-/** The assistant uses the existing native designer and working board. */
+/** The assistant lives in the existing designer. Native manual editing stays available. */
 export class AuthoringPanel {
   open=!!localStorage.getItem("osdpi-open-ai-generator");
   description="";
@@ -24,6 +24,7 @@ export class AuthoringPanel {
   abort=null;
   usage=null;
   audit=[];
+
   update(){Globals.state?.update();}
   async run() {
     if(this.busy)return;
@@ -42,6 +43,7 @@ export class AuthoringPanel {
       this.usage=result.usage;this.audit=result.audit;
       if(result.question){this.status=result.question;return;}
       if(db.designName!==name || fingerprint(captureNative())!==version)throw new Error("You changed the board while Groq was working. Your manual changes were kept; run the request against this updated board.");
+      // Voice selection is a device/account choice, not a design task.
       const voice=walk(original.layout).find(n=>n.className==="Speech")?.props.voiceURI;
       if(voice)for(const n of walk(result.design.layout))if(n.className==="Speech"&&!n.props.voiceURI)n.props.voiceURI=voice;
       const proposal={...result,name,version,request:this.description.trim()};
@@ -147,18 +149,16 @@ export class AuthoringPanel {
           <button type="button" ?disabled=${this.busy} @click=${()=>{this.pending=null;this.status="Proposal discarded. Your board is unchanged.";this.update();}}>Discard</button>
         </section>`:html``}
         ${this.history.length?html`<div class="ai-author-actions">
-          <button type="button" data-testid="author-undo" ?disabled=${this.busy||this.top===0} @click=${()=>this.undo()}>Undo AI change</button>
-          <button type="button" data-testid="author-redo" ?disabled=${this.busy||this.top===this.history.length} @click=${()=>this.undo(true)}>Redo AI change</button>
+          <button type="button" data-testid="author-undo" ?disabled=${this.busy||!this.top} @click=${()=>this.undo()}>Undo AI changes</button>
+          <button type="button" data-testid="author-redo" ?disabled=${this.busy||this.top===this.history.length} @click=${()=>this.undo(true)}>Redo AI changes</button>
         </div>`:html``}
-        <details><summary>Model and request details</summary>
-          <label>Groq model
-            <select data-testid="author-model" .value=${this.model} ?disabled=${this.busy} @change=${e=>{this.model=e.target.value;localStorage.setItem("osdpi-authoring-model",this.model);}}>
-              ${MODELS.map(([id,label])=>html`<option value=${id}>${label}</option>`)}
-            </select>
-          </label>
-          ${this.usage?html`<p>${this.usage.calls} model calls; ${this.usage.total_tokens} tokens reported.</p>`:html``}
-          ${this.audit.length?html`<p>${this.audit.map(a=>a.tool+": "+(a.ok?"completed":"needs correction")).join("; ")}</p>`:html``}
-          <p>Model availability and free-tier quotas depend on your Groq account. Both models use the same native editing tools.</p>
+        <details><summary>Model and checks</summary>
+          <label>Groq model<select data-testid="author-model" ?disabled=${this.busy} @change=${e=>{this.model=e.target.value;localStorage.setItem("osdpi-authoring-model",this.model);}}>
+            ${MODELS.map(([id,name])=>html`<option value=${id} ?selected=${id===this.model}>${name}</option>`)}
+          </select></label>
+          <p>Native schemas and references are checked before applying. Preview is still necessary to judge layout and usability.</p>
+          ${this.usage?html`<p>${this.usage.calls} requests; ${this.usage.total_tokens} reported tokens.</p>`:html``}
+          ${this.audit.length?html`<p>${this.audit.map(a=>a.tool+(a.ok?" OK":" needs correction")).join(" → ")}</p>`:html``}
         </details>
       </div>
     </details>`;
