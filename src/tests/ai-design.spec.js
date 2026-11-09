@@ -129,7 +129,7 @@ test("file-picker import and edit preserve embedded media and the original",asyn
     const p=fixture.panel;
     const content=p.draft.design.content;
     content[0].symbol="key.png";
-    p.media.set("key.png",new Blob([137,80,78,71,1,2,3,4],{type:"image/png"}));
+    p.media.set("key.png",new Blob([new Uint8Array([137,80,78,71,1,2,3,4])],{type:"image/png"}));
     const blob=await fixture.packDesign(p.draft.design,p.sourceName,p.media);
     return Array.from(new Uint8Array(await blob.arrayBuffer()));
   });
