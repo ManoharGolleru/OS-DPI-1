@@ -297,15 +297,6 @@ test('normal OS-DPI editor displays the accepted keyboard in its actual Preview'
   await page.getByTestId('author-mode').selectOption('new');
   await page.getByTestId('author-request').fill('Create a QWERTY keyboard with a display, Speak, Clear and Backspace.');
   await page.getByTestId('author-run').click();
-  await page.waitForTimeout(600);
-  console.log('REAL-EDITOR-DIAGNOSTICS',JSON.stringify(await page.evaluate(()=>({
-    href:location.href,ui:document.querySelector('#UI')?.innerText?.slice(0,220),
-    buttons:document.querySelector('#UI')?.querySelectorAll('button')?.length,
-    status:document.querySelector('[data-testid="author-status"]')?.textContent,
-    error:document.querySelector('[data-testid="author-error"]')?.textContent,
-    panel:document.querySelector('[data-testid="author-run"]')?.textContent,
-    body:document.body.className,
-  }))),errors,requests.length,requests.map((req,i)=>({turn:i+1,toolResults:req.messages.filter(m=>m.role==='tool').map(m=>m.content.slice(0,1200))})));
   await expect.poll(()=>page.locator('#UI button').count()).toBeGreaterThan(26);
   expect(requests).toHaveLength(2);
   await page.getByTestId('author-preview').click();
