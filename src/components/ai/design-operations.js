@@ -104,6 +104,9 @@ function operation(design,change) {
     case "set_button_color":
       locate(design,target,"Grid").props.buttonColor=color(value);
       break;
+    case "set_all_grid_colors":
+      for(const g of walk(design.layout).filter(n=>n.className==="Grid")) g.props.buttonColor=color(value);
+      break;
     case "set_spacing":
       locate(design,target,"Grid").props.spacing=number(value,0,40,"Spacing");
       break;
@@ -113,6 +116,12 @@ function operation(design,change) {
     case "set_ui_scale":
       design.layout.props.uiScale=number(value,0.3,4,"UI scale");
       break;
+    case "set_dwell_time": {
+      const timer=walk(design.method).find(n=>n.className==="Timer");
+      check(timer,"The current access method has no dwell timer.");
+      timer.props.Interval=number(value,0.1,60,"Dwell time");
+      break;
+    }
     case "set_cue_color": {
       const cue=walk(design.cues).find(n=>["CueOverlay","CueFill","CueCircle"].includes(n.className));
       check(cue,"There is no editable visual cue.");
@@ -142,9 +151,6 @@ function operation(design,change) {
       break;
     case "rename_word":
       design.content[selectRow(design,target)].label=safeName(text,"replacement label");
-      break;
-    case "set_spoken_text":
-      design.content[selectRow(design,target)].say=safeName(text,"spoken text");
       break;
     case "set_control_label":
       locate(design,target,"Button").props.label=safeName(text,"button label");
@@ -194,7 +200,7 @@ export const keyboardDesign=buildKeyboard;
 export const wordBoardDesign=buildWords;
 export const supportedEdits=[
   "create_keyboard","create_board","set_columns","set_color","set_button_color",
-  "set_spacing","set_scale","set_ui_scale","set_cue_color","set_display_position",
-  "add_words","remove_word","rename_word","set_spoken_text","set_control_label",
+  "set_spacing","set_scale","set_ui_scale","set_cue_color","set_dwell_time","set_display_position",
+  "add_words","remove_word","rename_word","set_control_label","set_all_grid_colors",
   "set_access","add_tab",
 ];

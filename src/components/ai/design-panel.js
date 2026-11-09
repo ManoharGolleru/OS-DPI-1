@@ -66,6 +66,7 @@ export class InterfaceDesigner {
     this.sendPreview();
   }
   createKeyboard() {
+    if(this.draft && !window.confirm("Replace the current unsaved draft with a new keyboard?"))return;
     try {
       const design=preserveVoice(keyboardDesign({access:this.access}),selectedVoice());
       const checked=checkDraft(design,null,[]);
@@ -155,12 +156,15 @@ export class InterfaceDesigner {
     try {
       const response=await generateEdits({
         description:this.description,model:this.model,
-        mode:this.draft?"edit":"create",design:base,signal:controller.signal,
+        mode:this.draft?"edit":"create",design:base,access:this.access,signal:controller.signal,
         onUsage:usage=>{this.usage=usage;},
       });
       if(controller.signal.aborted)return;
       if(version!==this.revision)throw new Error("The draft changed while Groq responded. Run the instruction again.");
-      this.edited(response.operations,response.summary);
+      const operations=this.draft?response.operations:response.operations.map(op=>
+        ["create_keyboard","create_board"].includes(op.op)?{...op,target:this.access}:op
+      );
+      this.edited(operations,response.summary);
     }catch(error){
       if(controller.signal.aborted)this.error="Request cancelled. The draft is unchanged.";
       else this.error=error.message||"No changes made.";
