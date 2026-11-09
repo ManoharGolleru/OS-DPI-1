@@ -1,0 +1,10 @@
+.ai-authoring .ai-body > label { display:flex; flex-direction:column; gap:.35rem; margin:.7rem 0; }
+.ai-authoring select, .ai-authoring textarea { width:100%; box-sizing:border-box; }
+.ai-author-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin:.6rem 0; }
+.ai-authoring button { padding:.45rem .7rem; }
+.ai-authoring [role=status], .ai-authoring [role=alert] { white-space:pre-wrap; overflow-wrap:anywhere; }
+.ai-copy-status { padding:.6rem; border:1px solid var(--border-color,#bbb); border-radius:.35rem; }
+.ai-review { padding:.8rem; border:2px solid #b27813; }
+#return-to-edit { position:fixed; top:.6rem; right:.6rem; z-index:90; }
+#return-to-edit:empty { display:none; }
+#return-to-edit button { background:white; color:#18332b; border:1px solid #52796d; padding:.5rem .9rem; border-radius:.4rem; box-shadow:0 1px 5px #0003; }

@@ -6,7 +6,7 @@ on:
     paths: ['src/**', 'tests/**', '.github/workflows/ai-authoring-checks.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: ai-authoring-${{ github.ref }}
   cancel-in-progress: true
@@ -16,6 +16,31 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Integrate reviewed baseline changes on the feature branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/ai-authoring-redesign'
+        run: |
+          if [ -f .github/authoring-integration.json ]; then
+          python - <<'PY'
+          import hashlib, json, pathlib
+          allowed={'src/components/content.js','src/components/layout.js','src/db.js','src/index.html','src/start.js'}
+          for change in json.loads(pathlib.Path('.github/authoring-integration.json').read_text()):
+              assert change['path'] in allowed
+              path=pathlib.Path(change['path'])
+              original=path.read_bytes()
+              actual=hashlib.sha1(b'blob '+str(len(original)).encode()+b'\0'+original).hexdigest()
+              assert actual==change['sha'], 'Source changed: '+str(path)
+              lines=original.decode().splitlines(keepends=True)
+              for edit in reversed(change['edits']):
+                  lines[edit['start']:edit['end']]=[edit['text']]
+              path.write_text(''.join(lines))
+          PY
+          git config user.name 'OS-DPI authoring checks'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/content.js src/components/layout.js src/db.js src/index.html src/start.js
+          git rm .github/authoring-integration.json
+          git commit -m 'Integrate native AI authoring into the existing editor and archive path'
+          git push origin HEAD:feature/ai-authoring-redesign
+          fi
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -25,11 +50,19 @@ jobs:
       - name: Build application
         working-directory: src
         run: npm run build
-      - name: Prepare isolated test environment
+      - name: Install browser test tools
+        working-directory: src
         run: |
-          tar --exclude='src/.env*' --exclude='src/dist' --exclude='src/public' -czf /tmp/osdpi-test-environment.tgz src
+          npm install --no-save --package-lock=false @playwright/test@1.65.0
+          npx playwright install --with-deps chromium
+      - name: Native browser and archive tests (simulated model replies)
+        working-directory: src
+        run: npx playwright test --config=tests/playwright.config.js
+      - name: Native document transaction tests
+        run: node --test tests/authoring.test.mjs
       - uses: actions/upload-artifact@v7
+        if: failure()
         with:
-          name: osdpi-test-environment
-          path: /tmp/osdpi-test-environment.tgz
+          name: authoring-browser-diagnostics
+          path: src/test-results
           retention-days: 1

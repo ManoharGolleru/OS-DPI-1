@@ -1,0 +1,41 @@
+import "@ungap/custom-elements";
+import {render} from "uhtml";
+import {Messages} from "../components/errors";
+import {Data} from "../data";
+import {State} from "../state";
+import "../components/index";
+import Globals from "../globals";
+import {TreeBase} from "../components/treebase";
+import {Designer} from "../components/designer";
+import {ComponentsPanel} from "../components/layout";
+import {Content} from "../components/content";
+import {authorInterface,TOOLS} from "../components/ai/authoring-agent";
+import * as native from "../components/ai/authoring-native";
+import {AuthoringDocument,node,walk,clone} from "../components/ai/authoring-document";
+import {getAIModel,setAIKey} from "../components/ai/index";
+import db,{DB,unPackDesign} from "../db";
+import {postRender} from "../render";
+import {zipSync,strToU8,unzipSync} from "fflate";
+
+Globals.state=new State();Globals.state.define("editing",true);Globals.state.define("designerTab","Content");
+Globals.data=new Data([]);Globals.error=new Messages();
+const design=native.emptyNative();
+const maps={layout:"layout",actions:"actions",method:"methods",pattern:"patterns",cues:"cues"};
+for(const [s,g]of Object.entries(maps))Globals[g]=TreeBase.fromObject(design[s]);
+Globals.content=TreeBase.create(Content);
+Globals.designer=TreeBase.fromObject({className:"Designer",props:{stateName:"designerTab"},children:[Globals.layout,Globals.actions,Globals.content,TreeBase.create(ComponentsPanel),Globals.cues,Globals.patterns,Globals.methods]});
+const panel=Globals.content.authoring;panel.open=true;
+function draw(){
+  document.body.classList.toggle("designing",!!Globals.state.get("editing"));
+  render(document.getElementById("cues"),Globals.cues.template());
+  render(document.getElementById("UI"),Globals.layout.children[0].template());
+  render(document.getElementById("test-panel"),panel.template());
+  postRender();Globals.methods.refresh();Globals.state.clearUpdated();
+}
+let scheduled=0;
+Globals.state.observe(()=>{cancelAnimationFrame(scheduled);scheduled=requestAnimationFrame(draw);});
+db.setDesignName("original");
+await native.persistNative(native.captureNative(),{name:"original"});
+setAIKey("gsk_test_not_a_real_key","groq");
+Globals.actions.configure();Globals.methods.configure();draw();
+window.fixture={Globals,TreeBase,panel,AuthoringDocument,node,walk,clone,...native,authorInterface,TOOLS,getAIModel,db,DB,unPackDesign,zipSync,strToU8,unzipSync,draw};
