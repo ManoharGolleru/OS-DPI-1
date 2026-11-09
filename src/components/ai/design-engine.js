@@ -1,173 +1,202 @@
 import Globals from "app/globals";
 import db from "app/db";
-import { TreeBase } from "../treebase";
+import {TreeBase} from "../treebase";
 import * as Props from "../props";
-import { compileExpression } from "app/eval";
-import { zipSync, strToU8 } from "fflate";
-import { aiComplete, getAIKey } from "./index";
-import { DESIGN_CLASSES, DESIGN_MODELS, SECTION_NAMES, SECTION_ROOTS, walk, starterDesign, validateDesign } from "./design-format";
+import {compileExpression} from "app/eval";
+import {zipSync, strToU8} from "fflate";
+import {aiComplete, getAIKey} from "./index";
+import {DESIGN_CLASSES, DESIGN_MODELS, SECTION_NAMES, walk, validateDesign} from "./design-format";
+import {applyDesignOperations, supportedEdits} from "./design-operations";
 
 let catalogCache;
-/** Read the real component/property registry of the running OS-DPI build. */
+/** Reuse the component registry that the current OS-DPI runtime already owns. */
 export function componentCatalog() {
   if (catalogCache) return catalogCache;
-  const result = {};
+  const catalog={};
   for (const name of DESIGN_CLASSES) {
-    const Constructor = TreeBase.nameToClass.get(name);
-    if (!Constructor) throw new Error(`This OS-DPI build does not register ${name}.`);
-    const instance = new Constructor();
-    const props = {};
-    for (const [key, prop] of Object.entries(instance.props)) {
-      let type = "String";
-      for (const kind of ["OneOfGroup", "Boolean", "Integer", "Float", "Color", "Conditional", "Expression", "Voice", "Select"]) {
-        if (prop instanceof Props[kind]) { type = kind; break; }
+    const Constructor=TreeBase.nameToClass.get(name);
+    if (!Constructor) throw new Error("Component not registered: "+name);
+    const instance=new Constructor();
+    const props={};
+    for (const [key,prop] of Object.entries(instance.props)) {
+      let type="String";
+      for (const kind of ["OneOfGroup","Boolean","Integer","Float","Color","Conditional","Expression","Voice","Select"]) {
+        if (prop instanceof Props[kind]) {type=kind;break;}
       }
-      let choices;
-      if (prop.choices instanceof Map) choices = [...prop.choices.keys()];
-      else if (Array.isArray(prop.choices) && prop.choices.length) choices = prop.choices;
-      props[key] = {
-        type, expression: !!prop.isFormulaByDefault,
-        ...(choices?.length ? {choices} : {}),
-        ...(prop.options.min !== undefined ? {min: prop.options.min} : {}),
-        ...(prop.options.max !== undefined ? {max: prop.options.max} : {}),
-      };
+      const choices=prop.choices instanceof Map ? [...prop.choices.keys()] : Array.isArray(prop.choices) ? prop.choices : null;
+      props[key]={type,expression:!!prop.isFormulaByDefault,
+        ...(choices?.length?{choices}:{}),
+        ...(prop.options.min!==undefined?{min:prop.options.min}:{}),
+        ...(prop.options.max!==undefined?{max:prop.options.max}:{})};
     }
-    const allowed = name === "Layout" ? ["Page"] : instance.allowedChildren;
-    const children = [...DESIGN_CLASSES].filter(child => {
-      const Child = TreeBase.nameToClass.get(child);
-      return allowed.some(parent => {
-        const Parent = TreeBase.nameToClass.get(parent);
-        return child === parent || (Parent && Child.prototype instanceof Parent);
+    const allowed=name==="Layout"?["Page"]:instance.allowedChildren;
+    const children=[...DESIGN_CLASSES].filter(child=>{
+      const Child=TreeBase.nameToClass.get(child);
+      return allowed.some(parent=>{
+        const Parent=TreeBase.nameToClass.get(parent);
+        return child===parent || (Parent && Child.prototype instanceof Parent);
       });
     });
-    result[name] = {props, children};
+    catalog[name]={props,children};
   }
-  catalogCache = result;
-  return result;
+  return catalogCache=catalog;
 }
-
 export function captureDesign() {
   return {
-    layout: Globals.layout.toObject(), content: JSON.parse(JSON.stringify(Globals.data.contentRows)),
-    actions: Globals.actions.toObject(), method: Globals.methods.toObject(),
-    pattern: Globals.patterns.toObject(), cues: Globals.cues.toObject(),
+    layout:Globals.layout.toObject(),
+    content:JSON.parse(JSON.stringify(Globals.data.contentRows)),
+    actions:Globals.actions.toObject(),
+    method:Globals.methods.toObject(),
+    pattern:Globals.patterns.toObject(),
+    cues:Globals.cues.toObject(),
   };
 }
-
 export function selectedVoice() {
-  return walk(Globals.layout.toObject()).find(n => n.className === "Speech")?.props.voiceURI || "";
+  return walk(Globals.layout.toObject()).find(n=>n.className==="Speech")?.props.voiceURI || "";
+}
+export function preserveVoice(design,voiceURI) {
+  for(const section of walk(design.layout)) if(section.className==="Speech" && !section.props.voiceURI) section.props.voiceURI=voiceURI;
+  return design;
 }
 
-function compactCatalog(catalog) {
-  return Object.entries(catalog).map(([name, spec]) => {
-    const fields = Object.entries(spec.props).filter(([key]) => !["Key", "voiceURI"].includes(key)).map(([key, p]) =>
-      `${key}:${p.expression ? "expression" : p.choices ? p.choices.join("|") : p.type}`,
-    );
-    if ("Key" in spec.props) fields.push("Key:unique-id");
-    if ("voiceURI" in spec.props) fields.push('voiceURI:""');
-    return `${name}{${fields.join(",")}}>${spec.children.join(",") || "leaf"}`;
-  }).join("\n");
+/** The current model only proposes commands; it never authors methods or expressions. */
+export const EDIT_SCHEMA = {
+  type:"object", additionalProperties:false,
+  properties:{
+    summary:{type:"string"},
+    operations:{type:"array",items:{
+      type:"object",additionalProperties:false,
+      properties:{
+        op:{type:"string",enum:supportedEdits},
+        target:{type:["string","null"]},
+        text:{type:["string","null"]},
+        value:{type:["string","number","boolean","null"]},
+        items:{type:"array",items:{type:"string"}},
+      },
+      required:["op","target","text","value","items"],
+    }},
+  },
+  required:["summary","operations"],
+};
+
+const SYSTEM = [
+  "You select commands for the existing OS-DPI AAC interface editor.",
+  "Do NOT write components, JSON sections, actions, code, or instructions to call APIs.",
+  "Return JSON conforming to the command schema. The application constructs all native components and actions.",
+  "Each operation changes only its target. Keep unrelated voice, content, methods, patterns, cues, and media untouched.",
+  "For a QWERTY typing keyboard with display/Speak/Clear choose create_keyboard. Add optional Backspace only if requested (value=true), otherwise false. Space is included.",
+  "For a new vocabulary board choose create_board with its exact requested labels in items and columns in value. No extra categories or phrases.",
+  "For an existing board prefer set_columns, set_button_color, set_spacing, rename_word, add_words, set_display_position and other targeted operations.",
+  "For create_keyboard and create_board use target='pointer', 'dwell', or 'two-switch'. For edits target is the existing grid/control name.",
+  "For add_tab use text=tab name and items=words on that tab. Existing tab navigation is handled by OS-DPI.",
+  "For rename_word, remove_word or set_spoken_text target is the current unique label or index:NUMBER, and text holds the new text.",
+  "For set_color, set_button_color, set_cue_color, set_ui_scale and set_columns put the new setting in value.",
+  "For set_display_position value is 'top' or 'bottom'. For set_access value is pointer, dwell or two-switch.",
+  "All unused target/text/value fields must be null. Unused items is []. One to eight operations. Never undo the user's request.",
+  "No external URLs, API keys, network actions, CSS, generated program code or unrelated edits.",
+  "If user requests unsupported behavior, return an empty operations array and a short explanation in summary.",
+].join("\n");
+
+function boardSummary(design) {
+  const nodes=walk(design.layout);
+  const components=nodes.filter(n=>["Grid","Display","Button","TabControl","TabPanel","Stack"].includes(n.className))
+    .slice(0,65).map(n=>({
+      type:n.className,
+      name:n.props.name||n.props.Name||"",
+      label:n.props.label||"",
+      ...(n.className==="Grid"?{rows:n.props.rows,columns:n.props.columns,color:n.props.buttonColor,spacing:n.props.spacing}:{}),
+    }));
+  return {
+    components,
+    content:design.content.slice(0,90).map((r,index)=>({index,label:r.label,grid:r.grid||"",say:r.say||""})),
+    access:design.method?.children?.filter(n=>n.props?.Active===true||n.props?.Active==="true")
+      .map(n=>n.props.Name)||[],
+    cues:design.cues?.children?.map(n=>({name:n.props.Name,color:n.props.Color}))||[],
+  };
+}
+export function designPrompt({description,mode,design}) {
+  return {system:SYSTEM,prompt:JSON.stringify({
+    task:mode==="create"?"Create a new interface":"Change the existing interface",
+    request:description,existing:mode==="create"?null:boardSummary(design),
+    supportedOperations:supportedEdits,
+  })};
 }
 
-const GUIDE = `You design native OS-DPI AAC interfaces, not websites or vocabulary-only lists.
-Return one JSON object {title,summary,design}. design MUST contain exactly layout,content,actions,method,pattern,cues.
-All trees use {className,props,children}; content is an array of scalar-valued row objects. Use only the supplied component catalog. Omit unused properties; do not invent properties. Every node has props and children, even if empty.
-Use one Page with flexible nested Stacks, TabControls/TabPanels, GridFilters and named controls. Use the requested sizes, positions, colors, vocabulary, navigation and access method. Never force categories or extra phrases contrary to the request. No inferred auto-switching after words.
-Use short readable labels, sufficient spacing, a message bar, Speak and Clear controls unless explicitly excluded. Compose words into $Display; speak full phrases directly. Navigation buttons must navigate, not speak their labels. UI controls are separate from vocabulary counts. Keep pages reachable with Back/Home or visible tabs. Use 12-24 vocabulary items by default, at most 36 per initial draft. For exact counts obey the user.
-Grid rows/columns must fit content. Give each grid a name and filter by #grid. Use native tabs with stateName $board and TabPanel names for multipage navigation. Actions use origin equal to a control's name (Display uses Name). First matching Action wins; put specific rules first. Use #label/#say for row values, $Display/$Speak/$Tone for state. Literal strings in expressions MUST be quoted: newValue:"'home'". add_word(#label) appends to the destination state. Supply initialized state for conditional filters, except TabControl selects its first tab automatically. Never name an Action after its displayed label unless that is also its name.
-Methods must contain real handlers and responses. Use NullPattern for pointer/dwell. Two-switch uses Space=next and Enter=activate with a referenced PatternManager. Row-column scanning uses PatternSelector > GroupBy(#row); group by #ComponentName before rows when multiple grids exist. Keep cue, pattern, method and timer keys unique and references consistent. Debounce and Timer Interval are SECONDS. At least one method active. Exactly one default pattern and cue. No SocketHandlers, external calls, CSS code, JS, HTML, API keys, or invented media URLs. Only use supplied media filenames. A tone-selector Grid uses content rows with sets:"tone" and labels Normal,Calm,Urgent,Angry,Sarcastic; its Action updates $Tone to #label, not $Speak. No automatically enabled microphone or cloud prediction. Predictors must stay local.
-Preserve the current voice: leave all voiceURI properties empty; the host attaches the selected voice locally. Never change keys or account settings.
-For an edit, preserve unchanged vocabulary and behavior and return the complete updated six sections, not a partial patch. Explain actual changes briefly in summary. No claims about clinical suitability. No commentary outside JSON.`;
-
-/** Pure prompt assembly, tested without spending API credits. */
-export function buildDesignPrompt({description, mode = "create", baseDesign = null, access = "pointer", mediaNames = [], catalog}) {
-  const context = baseDesign ? JSON.parse(JSON.stringify(baseDesign)) : starterDesign(access);
-  function stripVoice(value) {
-    if (!value || typeof value !== "object") return;
-    if (value.props && typeof value.props === "object") delete value.props.voiceURI;
-    for (const child of Object.values(value)) if (child && typeof child === "object") stripVoice(child);
-  }
-  stripVoice(context);
-  const system = `${GUIDE}\nCOMPONENT CATALOG (properties and allowed children):\n${compactCatalog(catalog)}`;
-  const prompt = JSON.stringify({
-    task: mode === "create" ? "Create a complete new interface" : "Edit the supplied design; preserve unrelated parts",
-    request: description, requestedAccess: access,
-    availableMedia: mediaNames,
-    [baseDesign ? "currentDesign" : "validNativeExample"]: context,
+export function checkDraft(design, baseline=null, mediaNames=[]) {
+  const validate=x=>validateDesign(x,componentCatalog(),{
+    checkExpression:value=>!compileExpression(value)[1],
+    mediaNames,
   });
-  return {system, prompt};
+  const result=validate(design);
+  const existing=baseline?new Set(validate(baseline).errors):new Set();
+  // Imported boards often contain existing advanced components outside the AI
+  // authoring allowlist. Existing issues are preserved, never regenerated.
+  return {
+    errors:result.errors.filter(e=>!existing.has(e)),
+    warnings:[...result.warnings,...(existing.size?[...existing].map(e=>"Existing import: "+e):[])],
+  };
 }
-
-export async function generateDesign({description, model, mode, baseDesign, access, mediaNames, voiceURI, signal, onUsage}) {
-  if (!DESIGN_MODELS.some(([id]) => id === model)) throw new Error("Select a supported design model.");
-  if (!getAIKey("groq")) throw new Error("Add your Groq key under Content > Keys > AI service (Groq).");
-  const {system, prompt} = buildDesignPrompt({description, mode, baseDesign, access, mediaNames, catalog: componentCatalog()});
-  // The published free tier is 8K TPM, not the model's 131K context. This is a size
-  // guard, not an exact tokenizer or a guarantee of remaining account quota.
-  const approximateInput = Math.ceil((system.length + prompt.length) / 3.5);
-  const maxTokens = 3600;
-  if (approximateInput + maxTokens > 7800) throw new Error(
-    "This request is too large for the free-tier design budget. Use a smaller board or edit fewer pages. Nothing was changed.",
-  );
-  const text = await aiComplete({
-    providerId: "groq", model, system, prompt, json: true,
-    maxTokens, effort: model.startsWith("qwen/") ? "none" : "low", signal, onUsage,
+export function updateDraft(source,operations,{baseline=source,mediaNames=[]}={}) {
+  const changed=applyDesignOperations(source,operations);
+  const checked=checkDraft(changed,baseline,mediaNames);
+  if (checked.errors.length) throw new Error("Edit was rejected. The draft is unchanged.\n"+checked.errors.join("\n"));
+  return {design:changed,warnings:checked.warnings};
+}
+export async function generateEdits({description,mode,model,design,signal,onUsage}) {
+  if (!DESIGN_MODELS.some(([id])=>id===model)) throw new Error("Select one of the supported Groq models.");
+  if (!getAIKey("groq")) throw new Error("Add a Groq API key under Content → Keys.");
+  const {system,prompt}=designPrompt({description,mode,design});
+  const approx=Math.ceil((system.length+prompt.length)/3.5);
+  if (approx+1500>7800) throw new Error("This board is too large for the free-tier request. Choose a smaller edit.");
+  const response=await aiComplete({
+    providerId:"groq",model,system,prompt,schema:EDIT_SCHEMA,
+    maxTokens:1500,effort:"low",signal,onUsage,
   });
-  let result;
-  try { result = JSON.parse(text); }
-  catch { throw new Error("The model did not return complete JSON. Ask for a smaller design and regenerate. Nothing was changed."); }
-  if (!result || typeof result.title !== "string" || typeof result.summary !== "string" || !result.design) throw new Error("The model omitted the title, summary, or native design.");
-  const draft = result.design;
-  const checked = validateDesign(draft, componentCatalog(), {
-    checkExpression: value => !compileExpression(value)[1], mediaNames,
-  });
-  const active = !checked.errors.length ? draft.method.children.filter(n => n.props.Active === true || n.props.Active === "true") : [];
-  const handlers = active.flatMap(walk);
-  if (access === "two-switch" && (![" ", "Enter"].every(key => handlers.some(n => n.className === "HandlerKeyCondition" && n.props.Key === key)) || !handlers.some(n => n.className === "ResponderNext"))) checked.errors.push("Use Space=Next and Enter=Activate for the requested two-switch access.");
-  if (access === "dwell" && !handlers.some(n => n.className === "ResponderStartTimer")) checked.errors.push("Dwell access requires a timer and its handlers.");
-  if (access === "pointer" && !handlers.some(n => n.className === "PointerHandler" && ["pointerup", "pointerdown"].includes(n.props.Signal))) checked.errors.push("Mouse/touch access requires a pointer activation handler.");
-  if (checked.errors.length) {
-    const error = new Error("Draft rejected. No board was changed.\n" + checked.errors.join("\n"));
-    error.name = "DesignValidationError";
-    // Keep the rejected draft local for an explicit repair, never auto-apply it.
-    error.draft = result;
-    throw error;
-  }
-  for (const n of walk(draft.layout)) if (n.className === "Speech") n.props.voiceURI = voiceURI;
-  return {title: result.title.slice(0, 80), summary: result.summary.slice(0, 1200), design: draft, warnings: checked.warnings};
+  let parsed;
+  try {parsed=JSON.parse(response);}catch{throw new Error("Groq did not return valid editing commands. Nothing changed.");}
+  if (!parsed || !Array.isArray(parsed.operations)) throw new Error("Groq omitted the edit operations.");
+  if (!parsed.operations.length) throw new Error(parsed.summary||"Groq did not propose a supported edit.");
+  if (parsed.operations.length>12) throw new Error("Too many editing commands. Narrow the request.");
+  return {operations:parsed.operations,summary:String(parsed.summary||"Updated interface").slice(0,500)};
 }
 
-/** Pack the exact six native files and only referenced existing media. No logs or keys. */
-export async function packDesign(design, sourceName) {
-  const files = Object.fromEntries(SECTION_NAMES.map(name => [`${name}.json`, strToU8(JSON.stringify(design[name]))]));
-  const references = new Set([
-    ...design.content.map(row => row.symbol),
-    ...walk(design.layout).map(n => n.props.symbol),
-  ].filter(Boolean));
-  const database = await db.dbPromise;
-  for (const name of references) {
-    const record = await database.get("media", [sourceName, name]);
-    if (!record) throw new Error(`Media is no longer available: ${name}`);
-    if (SECTION_NAMES.some(section => name === `${section}.json`) || /(^\/|\.\.\/)/.test(name)) throw new Error("Unsafe media filename.");
-    files[name] = new Uint8Array(await record.content.arrayBuffer());
+/** Preserve every associated media entry when exporting, including unused
+ * assets present in imported boards. No keys, logs or private settings.
+ */
+export async function collectMedia(sourceName,importedMedia=new Map()) {
+  const all=new Map(importedMedia);
+  if (sourceName && !importedMedia.size) {
+    const database=await db.dbPromise;
+    for (const name of await db.listMedia()) {
+      const record=await database.get("media",[sourceName,name]);
+      if (record) all.set(name,record.content);
+    }
   }
-  return new Blob([zipSync(files)], {type: "application/octet-stream"});
+  return all;
 }
-
-/** Save a separate board in one IndexedDB transaction. The current board is untouched. */
-export async function saveDesignCopy(draft, sourceName) {
-  const name = await db.uniqueName(draft.title || "AI-interface");
-  const database = await db.dbPromise;
-  const refs = new Set([...draft.design.content.map(r => r.symbol), ...walk(draft.design.layout).map(n => n.props.symbol)].filter(Boolean));
-  const media = [];
-  for (const file of refs) {
-    const record = await database.get("media", [sourceName, file]);
-    if (!record) throw new Error(`Media is no longer available: ${file}`);
-    media.push([file, record]);
+function safeAsset(name) {
+  if(typeof name!=="string" || !name || /(^\.|[\\/]|\.\.|[\x00-\x1f])/.test(name) || SECTION_NAMES.some(s=>name===s+".json"))
+    throw new Error("Unsafe media filename: "+name);
+}
+export async function packDesign(design,sourceName,importedMedia=new Map()) {
+  const files=Object.fromEntries(SECTION_NAMES.map(s=>[s+".json",strToU8(JSON.stringify(design[s]))]));
+  const media=await collectMedia(sourceName,importedMedia);
+  for (const [name,blob] of media) {
+    safeAsset(name);
+    files[name]=new Uint8Array(await blob.arrayBuffer());
   }
-  const tx = database.transaction(["store5", "media"], "readwrite");
-  for (const section of SECTION_NAMES) tx.objectStore("store5").put({name, type: section, data: draft.design[section]});
-  for (const [file, record] of media) tx.objectStore("media").put({...record, name: file, content: record.content}, [name, file]);
+  return new Blob([zipSync(files)],{type:"application/octet-stream"});
+}
+export async function saveDesignCopy(draft,sourceName,importedMedia=new Map()) {
+  const name=await db.uniqueName(draft.title||"AI-interface");
+  const media=await collectMedia(sourceName,importedMedia);
+  const database=await db.dbPromise;
+  const tx=database.transaction(["store5","media"],"readwrite");
+  for (const section of SECTION_NAMES) tx.objectStore("store5").put({name,type:section,data:draft.design[section]});
+  for (const [filename,blob] of media) {
+    safeAsset(filename);
+    tx.objectStore("media").put({name:filename,content:blob},[name,filename]);
+  }
   await tx.done;
   return name;
 }

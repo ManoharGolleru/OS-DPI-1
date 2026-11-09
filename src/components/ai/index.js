@@ -19,6 +19,7 @@
  * @property {string} [system]
  * @property {(usage: Object) => void} [onUsage]
  * @property {boolean} [json] - the reply must be a single JSON object
+ * @property {Object} [schema] - strict JSON Schema for design commands
  * @property {"none" | "low" | "medium" | "high"} [effort] - how hard reasoning
  *   models should think; "low" keeps interactive features fast
  * @property {number} [maxTokens]
@@ -234,7 +235,8 @@ async function openAICompatible(config, request, options = {}) {
     model: config.model,
     messages: [...(request.system ? [{role: "system", content: request.system}] : []), { role: "user", content: request.prompt }],
   };
-  if (request.json) body.response_format = { type: "json_object" };
+  if (request.schema) body.response_format = { type: "json_schema", json_schema: { name: "osdpi_edit_commands", strict: true, schema: request.schema } };
+  else if (request.json) body.response_format = { type: "json_object" };
   // Reasoning models think before answering; without a low effort they can
   // spend the whole token budget thinking and return nothing. Other models
   // reject the parameter, so only send it to the families that take it.
