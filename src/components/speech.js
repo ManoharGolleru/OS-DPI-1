@@ -7,6 +7,8 @@ import { cursor } from "./notes";
 import { CLEAR_AFTER_SAYING } from "./pieces";
 import {
   ELEVEN,
+  checkElevenVoice,
+  elevenVoiceInfo,
   elevenVoices,
   getElevenKey,
   isEleven,
@@ -375,7 +377,10 @@ class VoiceSelect extends HTMLSelectElement {
 
   async addVoices() {
     const voices = await getVoices();
-    const current = this.value || this.getAttribute("value");
+    const current = this.hasAttribute("data-current-voice")
+      ? (this.dataset.currentVoice || "")
+      : (this.value || this.getAttribute("value") || "");
+    if (isEleven(current)) checkElevenVoice(current);
     // the voices added last time go; options from the page (like the
     // computer's own voice) stay
     for (const old of this.querySelectorAll("[data-voice]")) old.remove();
@@ -399,27 +404,36 @@ class VoiceSelect extends HTMLSelectElement {
       item.innerText = voiceName(voice);
       this.add(item);
     }
-    // ElevenLabs voices, once the student has pasted a key
+    // Keep the selected custom voice visible even when it is not in
+    // the account's list (or the key is missing).
+    const group = document.createElement("optgroup");
+    group.dataset.voice = "";
+    group.label = "ElevenLabs";
     if (getElevenKey()) {
       loadElevenVoices();
-      const group = document.createElement("optgroup");
-      group.dataset.voice = "";
-      group.label = "ElevenLabs (your key)";
       for (const [id, name] of elevenVoices()) {
         const item = document.createElement("option");
         item.value = ELEVEN + id;
         item.innerText = name;
         group.append(item);
       }
-      // the board's voice stays picked while the list (re)loads
-      if (current && isEleven(current) && !group.querySelector(`[value="${CSS.escape(current)}"]`)) {
-        const item = document.createElement("option");
-        item.value = current;
-        item.innerText = "ElevenLabs voice (loading…)";
-        group.append(item);
-      }
-      if (group.children.length) this.append(group);
     }
+    if (isEleven(current) && ![...group.children].some(
+      (item) => item.value === current
+    )) {
+      const info = elevenVoiceInfo(current);
+      const item = document.createElement("option");
+      item.value = current;
+      item.innerText = info?.name
+        ? `${info.name} (custom)`
+        : info?.status === "checking"
+          ? "Custom voice (checking…)"
+          : info?.status === "error"
+            ? "Custom voice (not verified)"
+            : "Custom ElevenLabs voice";
+      group.append(item);
+    }
+    if (group.children.length) this.append(group);
     if (current) this.value = current;
   }
 }

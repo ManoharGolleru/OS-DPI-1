@@ -7,7 +7,9 @@ import Globals from "app/globals";
 import { TabPanel } from "./tabcontrol";
 import { StackContainer } from "./stack";
 import { Tones, sayLikeButton, hasNaturalVoices } from "./speech";
-import { elevenProblem, getElevenKey, isEleven } from "./elevenlabs";
+import {
+  elevenProblem, getElevenKey, isEleven, elevenVoiceInfo, checkElevenVoice,
+} from "./elevenlabs";
 import { callAfterRender } from "app/render";
 import { ModalDialog } from "./modal-dialog";
 import { clearCues } from "./access/pattern";
@@ -1270,14 +1272,18 @@ function voiceSetting(page) {
   const all = (node) =>
     node.className === "Speech" ? [node] : node.children.flatMap(all);
   if (!(voice instanceof Props.Voice)) return html``;
-  return html`<div class="piece-field board-voice">
+  if (isEleven(voice.value)) checkElevenVoice(voice.value);
+  const info = elevenVoiceInfo(voice.value);
+  return html`<div class="piece-field">
       <span>Voice</span>
       <select
         is="select-voice"
         value=${voice.value}
+        data-current-voice=${voice.value}
         @change=${(/** @type {Event} */ e) => {
           const value = /** @type {HTMLSelectElement} */ (e.target).value;
           for (const each of all(page)) each["voiceURI"].set(value);
+          if (isEleven(value)) checkElevenVoice(value);
           speech?.update();
         }}
       >
@@ -1291,6 +1297,33 @@ function voiceSetting(page) {
         ▶
       </button>
     </div>
+    <div class="piece-field board-voice">
+      <span>Custom ElevenLabs Voice ID</span>
+      <input
+        type="text"
+        placeholder="Paste ElevenLabs Voice ID"
+        aria-label="Custom ElevenLabs Voice ID"
+        .value=${isEleven(voice.value) ? voice.value.slice("eleven:".length) : ""}
+        @change=${(/** @type {Event} */ e) => {
+          const id = /** @type {HTMLInputElement} */ (e.target).value.trim();
+          const selected = id ? `eleven:${id}` : "";
+          for (const each of all(page)) each["voiceURI"].set(selected);
+          if (selected) checkElevenVoice(selected, true);
+          speech?.update();
+        }}
+      />
+    </div>
+    ${isEleven(voice.value)
+      ? html`<p class=${info?.status === "error" ? "piece-hint voice-problem" : "piece-hint voice-ready"} role="status">
+          ${info?.status === "ready"
+            ? `✓ Ready to use: ${info.name || "Custom ElevenLabs voice"}. Speech playback started successfully.`
+            : info?.status === "verified"
+              ? `✓ Voice recognized: ${info.name}. Press ▶ to test speech.`
+              : info?.status === "error"
+                ? `⚠ ${info.error}`
+                : "Checking custom voice with ElevenLabs…"}
+        </p>`
+      : html``}
     ${naturalVoices === false
       ? html`<p class="piece-hint">
           For voices that sound more like a person (Aria, Jenny, Guy…), open

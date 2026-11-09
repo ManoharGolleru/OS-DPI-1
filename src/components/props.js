@@ -5,6 +5,7 @@ import "css/props.css";
 import { compileExpression } from "app/eval";
 import Globals from "app/globals";
 import { TreeBaseSwitchable } from "./treebase";
+import { checkElevenVoice, elevenVoiceInfo } from "./elevenlabs";
 import { getColor, isValidColor, styleString } from "./style";
 
 /**
@@ -902,19 +903,48 @@ export class Voice extends Prop {
   }
 
   input() {
-    return this.labeled(
-      html`<select
+    if (this._value.startsWith("eleven:")) checkElevenVoice(this._value);
+    const info = elevenVoiceInfo(this._value);
+    return html`<div>
+      ${this.labeled(html`<select
         is="select-voice"
         .value=${this._value}
+        data-current-voice=${this._value}
         id=${this.id}
         @change=${(/** @type {InputEventWithTarget} */ event) => {
-          this._value = event.target.value;
+          this.set(event.target.value);
+          if (this._value.startsWith("eleven:")) checkElevenVoice(this._value);
           this.update();
         }}
       >
         <option value="">Default</option>
-      </select>`,
-    );
+      </select>`)}
+      <label class="labeledInput">
+        <span class="labelText">Custom ElevenLabs Voice ID</span>
+        <input
+          type="text"
+          placeholder="Paste ElevenLabs Voice ID"
+          .value=${this._value.startsWith("eleven:") ? this._value.slice(7) : ""}
+          @change=${(/** @type {InputEventWithTarget} */ event) => {
+            const id = event.target.value.trim();
+            this.set(id ? `eleven:${id}` : "");
+            if (id) checkElevenVoice(this._value, true);
+            this.update();
+          }}
+        />
+      </label>
+      ${this._value.startsWith("eleven:")
+        ? html`<p role="status">
+            ${info?.status === "ready"
+              ? `✓ Ready to use: ${info.name || "Custom ElevenLabs voice"}`
+              : info?.status === "verified"
+                ? `✓ Voice recognized: ${info.name}. Test speech with ▶ in Layout.`
+                : info?.status === "error"
+                  ? `⚠ ${info.error}`
+                  : "Checking custom voice with ElevenLabs…"}
+          </p>`
+        : html``}
+    </div>`;
   }
 }
 /** @extends {Prop<string>} */
