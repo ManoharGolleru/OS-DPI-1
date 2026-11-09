@@ -31,6 +31,7 @@ export class InterfaceDesigner {
     this.gridName="";
     this.rowIndex=0;
     this.previewText="";
+    this.previewSpoken="";
     this.frameReady=false;
     window.addEventListener("message",event=>{
       if (event.origin!==location.origin || event.source!==this.frame?.contentWindow) return;
@@ -39,7 +40,8 @@ export class InterfaceDesigner {
         this.sendPreview();
       } else if (event.data?.type==="osdpi-preview-state") {
         const text=String(event.data.display||"");
-        if (text!==this.previewText) {this.previewText=text;this.update();}
+        const spoken=String(event.data.speak||"");
+        if (text!==this.previewText || spoken!==this.previewSpoken) {this.previewText=text;this.previewSpoken=spoken;this.update();}
       } else if (event.data?.type==="osdpi-preview-error") {
         this.error="Preview error: "+event.data.message;
         this.update();
@@ -59,6 +61,7 @@ export class InterfaceDesigner {
     this.rowIndex=0;
     this.gridName="";
     this.previewText="";
+    this.previewSpoken="";
     this.update();
     this.sendPreview();
   }
@@ -101,7 +104,7 @@ export class InterfaceDesigner {
     const source=this.draft?.design||starterDesign(this.access);
     const names=[...this.media.keys()];
     const result=updateDraft(source,operations,{baseline:this.baseline,mediaNames:names});
-    preserveVoice(result.design,selectedVoice());
+    if(!this.draft) preserveVoice(result.design,selectedVoice());
     if(this.draft){
       this.history.push(duplicate(this.draft));
       if(this.history.length>25)this.history.shift();
@@ -305,7 +308,7 @@ export class InterfaceDesigner {
             style="display:block;width:100%;height:450px;border:1px solid #aaa;border-radius:6px"
             src=${import.meta.env.BASE_URL+"ai-preview.html"}
             ref=${frame=>{if(frame&&frame!==this.frame){this.frame=frame;this.frameReady=false;}}}></iframe>
-          <p class="ai-key-note" data-testid="design-preview-text">Preview display: ${this.previewText}</p>
+          <p class="ai-key-note" data-testid="design-preview-text">Preview display: ${this.previewText}. Last speech: ${this.previewSpoken}</p>
           ${draft.warnings?.slice(0,5).map(w=>html`<p class="ai-key-note">${w}</p>`)}
           <details><summary>Inspect native sections</summary>
             ${SECTION_NAMES.map(name=>html`<details><summary>${name}.json</summary>

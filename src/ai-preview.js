@@ -68,7 +68,7 @@ function mount(source,assets) {
     postRender();
     Globals.methods.refresh();
     const display=String(Globals.state.get("$Display")||"");
-    notify("osdpi-preview-state",{display});
+    notify("osdpi-preview-state",{display,speak:String(Globals.state.get("$Speak")||"")});
     Globals.state.clearUpdated();
   };
   unsubscribe=Globals.state.observe(draw);
