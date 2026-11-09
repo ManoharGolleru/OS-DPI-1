@@ -133,11 +133,9 @@ test("file-picker import and edit preserve embedded media and the original",asyn
     const blob=await fixture.packDesign(p.draft.design,p.sourceName,p.media);
     return Array.from(new Uint8Array(await blob.arrayBuffer()));
   });
-  await page.evaluate(()=>Object.defineProperty(window,"showOpenFilePicker",{configurable:true,value:undefined}));
-  const picker=page.waitForEvent("filechooser");
-  await page.getByTestId("design-import").click();
-  const chooser=await picker;
-  await chooser.setFiles({name:"student-keyboard.osdpi",mimeType:"application/zip",buffer:Buffer.from(bytes)});
+  await page.getByTestId("design-import").setInputFiles({
+    name:"student-keyboard.osdpi",mimeType:"application/zip",buffer:Buffer.from(bytes),
+  });
   await expect(page.getByTestId("design-draft")).toContainText("student-keyboard");
   const result=await page.evaluate(async()=>{
     const p=fixture.panel;

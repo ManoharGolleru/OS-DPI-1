@@ -1,7 +1,7 @@
 import {html} from "uhtml";
 import Globals from "app/globals";
 import db, {unPackDesign} from "app/db";
-import {fileOpen, fileSave} from "browser-fs-access";
+import {fileSave} from "browser-fs-access";
 import {DESIGN_MODELS, SECTION_NAMES, starterDesign, walk} from "./design-format";
 import {keyboardDesign} from "./design-operations";
 import {captureDesign, selectedVoice, checkDraft, updateDraft, generateEdits,
@@ -82,10 +82,10 @@ export class InterfaceDesigner {
       this.setDraft(design,db.designName+" edited","Copy of the current board.",db.designName,media);
     }catch(error){this.error=error.message;this.update();}
   }
-  async importFile() {
-    if(this.busy)return;
+  async importFile(file) {
+    if(this.busy || !file)return;
     try {
-      const file=await fileOpen({description:"OS-DPI design",extensions:[".osdpi",".zip"]});
+      if(file.size > 100*1024*1024)throw new Error("The archive exceeds the 100 MB import limit.");
       const archive=await unPackDesign(file);
       for(const part of SECTION_NAMES)if(!(part in archive))throw new Error("Imported file has no "+part+".json section.");
       const design=Object.fromEntries(SECTION_NAMES.map(name=>[name,archive[name]]));
@@ -223,8 +223,10 @@ export class InterfaceDesigner {
             @click=${()=>this.createKeyboard()}>New QWERTY keyboard</button>
           <button type="button" data-testid="design-current" ?disabled=${this.busy}
             @click=${()=>this.useCurrent()}>Edit current board</button>
-          <button type="button" data-testid="design-import" ?disabled=${this.busy}
-            @click=${()=>this.importFile()}>Import .osdpi</button>
+          <label>Import .osdpi
+            <input type="file" data-testid="design-import" accept=".osdpi,.zip" ?disabled=${this.busy}
+              @change=${e=>{const file=e.target.files?.[0];e.target.value="";this.importFile(file);}}/>
+          </label>
           <button type="button" ?disabled=${this.busy}
             @click=${()=>{
               if(this.draft && !window.confirm("Discard the current unsaved draft?"))return;
