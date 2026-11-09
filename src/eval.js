@@ -1,4 +1,10 @@
 import expressions from "angular-expressions";
+
+// angular-expressions references a Node-style global when compiling formulas
+// in the browser. Define it once for every native editor entrypoint.
+if (typeof window !== "undefined" && typeof window.global === "undefined") {
+  window.global = globalThis;
+}
 import Globals from "./globals";
 import db from "./db";
 
