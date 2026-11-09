@@ -291,7 +291,7 @@ test('normal OS-DPI editor displays the accepted keyboard in its actual Preview'
     const next=replies.shift();
     await route.fulfill(next?{json:toolReply(next[0],next[1],`live${requests.length}`)}:{status:500,json:{error:{message:'Unexpected request'}}});
   });
-  await page.addInitScript(()=>localStorage.setItem('osdpi-open-ai-generator','1'));
+  await page.addInitScript(()=>{localStorage.setItem('osdpi-open-ai-generator','1');localStorage.setItem('os-dpi-groq-key','gsk_fake_authoring_test_key');});
   await page.goto('/OS-DPI-1/#class-keyboard', {waitUntil:'domcontentloaded'});
   await expect(page.getByTestId('author-run')).toBeVisible({timeout:20000});
   await page.getByTestId('author-mode').selectOption('new');
