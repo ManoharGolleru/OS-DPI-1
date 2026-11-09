@@ -34,7 +34,6 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       input: {
         index: "./index.html",
-        "ai-preview": "./ai-preview.html",
         "service-worker": "./service-worker.js",
       },
       output: {
