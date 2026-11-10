@@ -116,6 +116,8 @@ export class AuthoringDocument {
     if (own(ROOTS,ref)) return this.design[ref];
     if (ref === "page") return this.design.layout.children[0];
     const found = this.refs.get(ref);
+    if(!found && typeof ref==="string" && ref.startsWith("@") && (this.refs.has(ref.slice(1)) || own(ROOTS,ref.slice(1)) || ref.slice(1)==="page"))
+      throw new Error(`Unknown reference ${ref}. Use target ${ref.slice(1)} without @; @ref.property is only for scalar values.`);
     assert(found, `Unknown reference ${ref}. Use inspect to read the current document.`);
     return found;
   }

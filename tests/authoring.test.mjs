@@ -2,11 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {AuthoringDocument,walk,node,presentationReview} from '../src/components/ai/authoring-document.js';
-import {compactFeedback} from '../src/components/ai/authoring-context.js';
+import {compactFeedback,compactSchemas,describeForModel} from '../src/components/ai/authoring-context.js';
 const json=name=>JSON.parse(readFileSync(new URL(name,import.meta.url),'utf8'));
 const catalog=json('./native-catalog.json'), empty=json('./native-empty.json');
 const session=()=>new AuthoringDocument(empty,catalog);
 const insert=()=>({ op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'choice', props: { name: 'choice', label: 'Choose' } }] });
+test('oversized inspection preserves requested dwell wiring before class schemas',()=>{
+ const s=session(),method=s.design.method.children.find(n=>/dwell/i.test(n.props.Name));
+ assert.ok(method);
+ const object=describeForModel(s,method,{depth:5,limit:100});
+ const result=compactFeedback({object,schemas:compactSchemas(catalog,Object.keys(catalog),{help:true})},{catalog});
+ assert.ok(JSON.stringify(result).length<=5000);
+ assert.deepEqual(result.object,object);
+ assert.ok(result.omittedClasses.length>0);
+ const nodes=walk(result.object);
+ assert.ok(nodes.some(n=>n.className==='Timer'&&n.props.Interval!==undefined));
+ assert.ok(nodes.some(n=>n.className==='PointerHandler'&&n.props.Signal));
+ assert.ok(nodes.some(n=>n.className==='ResponderStartTimer'&&n.props.TimerName));
+});
+test('mistyped property notation in an exact reference is rejected with its known target',()=>{
+ const s=session();s.edit([insert()]);const before=s.snapshot();
+ assert.throws(()=>s.find('@choice'),/Use target choice without @/);
+ assert.equal(s.find('choice').className,'Button');
+ assert.throws(()=>s.find('@missing'),/Use inspect/);
+ assert.deepEqual(s.snapshot(),before);
+});
+test('wide scalar rows remain inspectable within the response budget with explicit omissions',()=>{
+ const fields=Object.fromEntries(Array.from({length:100},(_,i)=>['column'+i,'value'.repeat(16)]));
+ const result=compactFeedback({object:{ref:'wideRow',fields}});
+ assert.ok(JSON.stringify(result).length<=5000);
+ assert.equal(result.object.ref,'wideRow');assert.ok(result.object.omittedProps.length>0);
+ for(const [key,value] of Object.entries(result.object.props))assert.equal(value,fields[key]);
+ assert.equal(Object.keys(result.object.props).length+result.object.omittedProps.length,100);
+});
 test('large staged-edit errors retain the actual corrections and native refs within the tool budget',()=>{
  const feedback={ok:false,staged:true,instruction:'Edits are kept; correct the bindings, do not repeat inserts.',
   errors:Array.from({length:30},(_,i)=>({ref:'action'+i,key:'action'+i+'.origin',message:'No matching named layout component. Bind the native component ref.'})),

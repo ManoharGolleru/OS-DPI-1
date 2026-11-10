@@ -36,6 +36,30 @@ export function compactFeedback(result,{catalog={},limit=5000}={}) {
   if(result.presentation)short.presentation=result.presentation.observed
     ? {summary:result.presentation.summary,observed:{initialVisibleGrids:result.presentation.observed.initialVisibleGrids.slice(0,3).map(g=>({...g,labels:g.labels.slice(0,8).map(label=>label.slice(0,60))}))}}
     : result.presentation.summary || result.presentation;
+  // The requested object's values and wiring are the reason for inspecting it.
+  // Reserve them before filling the response with reusable class schemas.
+  if(result.object){
+    short.object=result.object;
+    if(size(short)>limit-500){
+      const brief=n=>({ref:n.ref,className:n.className,totalChildren:n.totalChildren,
+        props:Object.fromEntries(Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v!=="string"||v.length<=240)),
+        omittedProps:Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v==="string"&&v.length>240).map(([key])=>key),
+        ...(n.children?{children:n.children.map(brief)}:{})});
+      short.object=brief(result.object);
+      while(size(short)>limit-500){
+        const parents=[];
+        const visit=n=>{if(n.children?.length){parents.push(n);n.children.forEach(visit);}};
+        visit(short.object);
+        const parent=parents.at(-1);
+        if(parent){parent.children.pop();parent.omittedChildren=(parent.omittedChildren||0)+1;}
+        else {
+          const key=Object.keys(short.object.props).at(-1);
+          if(key===undefined)break;
+          delete short.object.props[key];short.object.omittedProps.push(key);
+        }
+      }
+    }
+  }
   if(result.schemas){
     short.schemas={};short.omittedClasses=[];
     for(const [name,schema] of Object.entries(compactSchemas(catalog,Object.keys(result.schemas)))){
@@ -44,17 +68,10 @@ export function compactFeedback(result,{catalog={},limit=5000}={}) {
     }
   }
   if(result.example && size({...short,example:result.example})<=limit)short.example=result.example;
-  if(result.object){
-    const brief=n=>({ref:n.ref,className:n.className,totalChildren:n.totalChildren,
-      props:Object.fromEntries(Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v!=="string"||v.length<=240)),
-      omittedProps:Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v==="string"&&v.length>240).map(([key])=>key)});
-    const object={...brief(result.object),children:result.object.children?.slice(0,4).map(brief)};
-    short.object=size({...short,object})<=limit?object:{ref:result.object.ref,className:result.object.className,totalChildren:result.object.totalChildren};
-  }
   if(result.content)short.content={total:result.content.total,rows:result.content.rows.slice(0,5)};
   while(size(short)>limit && short.created?.length)short.created.pop();
   if(size(short)>limit)delete short.content;
-  if(size(short)>limit){for(const key of ["schemas","object","example","presentation"])delete short[key];short.errors=short.errors?.slice(0,2);short.pending=short.pending?.slice(0,2);short.interactions=short.interactions?.slice(0,2);}
+  if(size(short)>limit){for(const key of ["schemas","example","presentation"])delete short[key];short.errors=short.errors?.slice(0,2);short.pending=short.pending?.slice(0,2);short.interactions=short.interactions?.slice(0,2);}
   return short;
 }
 

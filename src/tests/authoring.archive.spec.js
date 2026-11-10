@@ -1,6 +1,49 @@
 // Regression for archives captured from REAL Groq runs. No model requests here.
 import {test,expect} from '@playwright/test';
 import {readFileSync,writeFileSync} from 'node:fs';
+import {zipSync,strToU8} from 'fflate';
+
+// Native documentation regression; this is not a model reliability test.
+test('documented timer responds to physical keys in ordinary Preview and after native roundtrip',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>{localStorage.setItem('osdpi-open-ai-generator','1');window.spoken=[];speechSynthesis.speak=u=>window.spoken.push(u.text);});
+ await page.goto('/OS-DPI-1/#timer-reference-original');await expect(page.getByTestId('author-import')).toBeVisible();
+ const design=await page.evaluate(async()=>{
+  const n=await import('/OS-DPI-1/components/ai/authoring-native.js'),p=await import('/OS-DPI-1/components/ai/authoring-protocol.js');
+  const session=n.documentSession(n.emptyNative());
+  const decoded=p.decodeAuthoringResponse(JSON.stringify({command:n.examples('timer').command}));
+  session.edit([...JSON.parse(decoded.tool_calls[0].function.arguments).operations,
+   {op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Status'}},{className:'Display',props:{stateName:'$Score'}}]},
+   {op:'bind',target:'init',rules:[{updates:{$Score:'7'}}]},
+  ]);
+  if(session.check().errors.length)throw new Error(JSON.stringify(session.check().errors));
+  return session.snapshot();
+ });
+ const archive=zipSync(Object.fromEntries(Object.entries(design).map(([key,value])=>[key+'.json',strToU8(JSON.stringify(value))])));
+ await page.getByTestId('author-import').setInputFiles({name:'Timer-reference.osdpi',mimeType:'application/zip',buffer:Buffer.from(archive)});await page.waitForURL(/#Timer_reference$/);
+ const fingerprint=()=>page.evaluate(async()=>{const n=await import('/OS-DPI-1/components/ai/authoring-native.js');return n.fingerprint(n.captureNative());});
+ const before=await fingerprint(),ui=page.locator('#UI');
+ async function interact(){
+  await page.getByTestId('author-preview').click();await expect(ui).toContainText('Ready');await expect(ui).toContainText('7');
+  await page.keyboard.down('x');await page.waitForTimeout(150);await page.keyboard.up('x');await page.waitForTimeout(2200);await expect(ui).toContainText('Ready');
+  await page.evaluate(()=>{
+   window.timerObservation={};
+   const keyup=e=>{if(e.key==='t'){window.timerObservation.started=performance.now();removeEventListener('keyup',keyup);}};
+   addEventListener('keyup',keyup);
+   const observer=new MutationObserver(()=>{if(document.querySelector('#UI').textContent.includes('Time up')){window.timerObservation.elapsed=performance.now()-window.timerObservation.started;observer.disconnect();}});
+   observer.observe(document.querySelector('#UI'),{childList:true,subtree:true,characterData:true});
+  });
+  await page.keyboard.down('t');await page.waitForTimeout(150);await page.keyboard.up('t');
+  await page.waitForTimeout(1500);await expect(ui).toContainText('Ready');await expect(ui).toContainText('Time up',{timeout:2500});
+  const elapsed=await page.evaluate(()=>window.timerObservation.elapsed);expect(elapsed).toBeGreaterThanOrEqual(1950);expect(elapsed).toBeLessThan(3000);
+  await expect(ui).toContainText('7');expect(await page.evaluate(()=>window.spoken)).toEqual([]);
+  await page.getByRole('button',{name:'Back to editing',exact:true}).click();
+ }
+ await interact();
+ const downloaded=page.waitForEvent('download');await page.getByTestId('author-download').click();const bytes=readFileSync(await(await downloaded).path());
+ await page.getByTestId('author-import').setInputFiles({name:'Timer-roundtrip.osdpi',mimeType:'application/zip',buffer:bytes});await page.waitForURL(/#Timer_roundtrip$/);expect(await fingerprint()).toBe(before);
+ await interact();expect(errors).toEqual([]);
+});
 
 test('recorded real Qwen archive works in ordinary Preview and after UI export/reimport',async({page},testInfo)=>{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));

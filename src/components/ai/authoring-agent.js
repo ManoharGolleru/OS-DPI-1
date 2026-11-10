@@ -65,7 +65,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
   const transcript=[], audit=[], outcomes=[], usage={total_tokens:0,calls:0,unreported_budget_tokens:0};
   const budgetUsed=()=>usage.total_tokens+usage.unreported_budget_tokens;
   const initialRefs=new Set(session.refs.keys()),inspectedClasses=new Set(),inspectedTargets=new Set();
-  let proseFailures=0,protocolFailures=0,quotaRetries=0,sizeRetries=0,lastRate=lastAuthoringRate(model),waited=0,interactionTests=[],charsPerToken=3.5,smallContext=false,lastTokens=5000;
+  let proseFailures=0,protocolFailures=0,quotaRetries=0,sizeRetries=0,lastRate=lastAuthoringRate(model),waited=0,interactionTests=[],charsPerToken=3.5,smallContext=false,lastTokens=5000,lastValidation;
   const requiresSurface=requireVisible ?? !presentationReview(session.design,"",{requireVisible:true}).ok;
   const submit=args=>{
     const checked=session.check();
@@ -109,6 +109,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     // This ledger survives removal of large assistant/tool exchanges. Never
     // make the model rediscover whether its last edit actually worked.
     task.lastResults=outcomes.slice(-4);
+    if(lastValidation)task.lastValidation=lastValidation;
     const shrink=()=>{
       task.page={ref:task.page.ref,className:task.page.className,totalChildren:task.page.totalChildren};
       task.outline=Object.fromEntries(Object.entries(task.outline).map(([s,n])=>[s,{ref:n.ref,className:n.className,children:n.children}]));
@@ -244,6 +245,11 @@ export async function authorInterface({session,request,selected=null,model=MODEL
       outcomes.push(encoded.length<=1800?JSON.parse(encoded):{tool:toolName,ok:result?.ok!==false,
         staged:result?.staged,error:result?.error,errors:result?.errors?.slice(0,4),instruction:result?.instruction,
         created:result?.created?.slice(0,10)});
+      if(name!=="inspect" && (result?.error || result?.errors?.length || result?.interactions || result?.presentation))
+        lastValidation={round:round+1,tool:toolName,ok:result?.ok!==false,error:result?.error?.slice(0,400),
+          errors:result?.errors?.slice(0,3).map(e=>String(typeof e==="string"?e:e.message).slice(0,180)),
+          interactions:result?.interactions?.filter(t=>!t.ok).slice(0,3).map(t=>({name:String(t.name||"").slice(0,40),error:String(t.error||"").slice(0,180)})),
+          instruction:result?.instruction?.slice(0,300)};
       onDiagnostic({stage:"tool",round:round+1,tool:toolName,validArguments:!!args,ok:result?.ok!==false&&!result?.errors?.length,
         errors:result?.errors?.length || (result?.error?1:0),sections:SECTIONS.filter(s=>beforeSections[s]!==JSON.stringify(session.design[s])),resultBytes:text.length,details:{arguments:args,result}});
       group.push({role:"tool",tool_call_id:call.id,content:JSON.stringify(compactFeedback(redact(result),{catalog:session.catalog}))});

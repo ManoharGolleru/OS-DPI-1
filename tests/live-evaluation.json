@@ -281,6 +281,38 @@
       ]
     },
     {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T01:39:24.795Z",
+      "protocol": 4,
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "68c6a73f42984ab157017a2f98f73f754ce6b10672915ed5acf88b788ba644e7",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 3,
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            400,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "unknown",
+            "unknown"
+          ]
+        }
+      ]
+    },
+    {
       "model": "qwen/qwen3.8-27b",
       "task": "custom",
       "started": "2026-11-10T01:41:08.221Z",
@@ -317,78 +349,6 @@
             "tool_calls",
             "tool_calls",
             "tool_calls",
-            "tool_calls"
-          ]
-        }
-      ]
-    },
-    {
-      "model": "openai/gpt-oss-120b",
-      "task": "custom",
-      "started": "2026-11-10T01:39:24.795Z",
-      "protocol": 4,
-      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
-      "sourceTraceSHA256": "68c6a73f42984ab157017a2f98f73f754ce6b10672915ed5acf88b788ba644e7",
-      "attempts": [
-        {
-          "attempt": 1,
-          "nativeDraftOutcome": "failed",
-          "ordinaryPreviewAndExportReimport": "not-run",
-          "usage": {
-            "requests": 3,
-            "promptTokens": 0,
-            "completionTokens": 0,
-            "cachedTokens": 0,
-            "usageAvailableForAllRequests": false
-          },
-          "statuses": [
-            400,
-            400,
-            400
-          ],
-          "finishReasons": [
-            "unknown",
-            "unknown",
-            "unknown"
-          ]
-        }
-      ]
-    },
-    {
-      "model": "qwen/qwen3.8-27b",
-      "task": "custom",
-      "started": "2026-11-10T01:53:07.612Z",
-      "protocol": 5,
-      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
-      "sourceTraceSHA256": "e89fba77e045419b0c91d233a87ac0f32eeb4bbbed0a20268a9862f5b3d752ea",
-      "attempts": [
-        {
-          "attempt": 1,
-          "nativeDraftOutcome": "failed",
-          "ordinaryPreviewAndExportReimport": "not-run",
-          "usage": {
-            "requests": 7,
-            "promptTokens": 25317,
-            "completionTokens": 6080,
-            "cachedTokens": 0,
-            "usageAvailableForAllRequests": false
-          },
-          "statuses": [
-            200,
-            200,
-            200,
-            400,
-            200,
-            400,
-            200
-          ],
-          "finishReasons": [
-            "tool_calls",
-            "tool_calls",
-            "tool_calls",
-            "unknown",
-            "tool_calls",
-            "unknown",
             "tool_calls"
           ]
         }
@@ -434,6 +394,46 @@
             "tool_calls",
             "tool_calls",
             "unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T01:53:07.612Z",
+      "protocol": 5,
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "e89fba77e045419b0c91d233a87ac0f32eeb4bbbed0a20268a9862f5b3d752ea",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 7,
+            "promptTokens": 25317,
+            "completionTokens": 6080,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            400,
+            200,
+            400,
+            200
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "unknown",
+            "tool_calls"
           ]
         }
       ]
@@ -560,7 +560,8 @@
           ]
         }
       ],
-      "ordinaryPreviewEvidence": null
+      "ordinaryPreviewEvidence": null,
+      "sourceTraceFile": "gpt-oss-restaurant-strict-protocol-9-attempt-1.json"
     },
     {
       "model": "qwen/qwen3.8-27b",
@@ -597,10 +598,12 @@
             "stop",
             "stop",
             "stop"
-          ]
+          ],
+          "previewEvidence": "qwen-restaurant-strict-protocol-9-attempt-1-preview/evidence.json"
         }
       ],
-      "ordinaryPreviewEvidence": "qwen-restaurant-strict-protocol-9-attempt-1-preview/evidence.json"
+      "ordinaryPreviewEvidence": "qwen-restaurant-strict-protocol-9-attempt-1-preview/evidence.json",
+      "sourceTraceFile": "qwen-restaurant-strict-protocol-9-attempt-1.json"
     },
     {
       "model": "openai/gpt-oss-120b",
@@ -637,160 +640,8 @@
             "unknown"
           ]
         }
-      ]
-    },
-    {
-      "model": "openai/gpt-oss-120b",
-      "task": "custom",
-      "started": "2026-11-10T03:36:24.257Z",
-      "protocol": 10,
-      "wireProtocol": "strict-json",
-      "temperature": 1,
-      "reasoningEffort": "low",
-      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
-      "requestedAttempts": 1,
-      "stopped": false,
-      "sourceTraceSHA256": "f7ccb2afefcb79610e8a3143d3110bab2766ccaea0535d3dcefa445be3c1e71e",
-      "attempts": [
-        {
-          "attempt": 1,
-          "nativeDraftOutcome": "failed",
-          "ordinaryPreviewAndExportReimport": "not-run",
-          "usage": {
-            "requests": 6,
-            "promptTokens": 13828,
-            "completionTokens": 5690,
-            "cachedTokens": 3072,
-            "usageAvailableForAllRequests": false
-          },
-          "statuses": [
-            400,
-            200,
-            200,
-            200,
-            400,
-            400
-          ],
-          "finishReasons": [
-            "unknown",
-            "stop",
-            "stop",
-            "stop",
-            "unknown",
-            "unknown"
-          ]
-        }
-      ]
-    },
-    {
-      "model": "openai/gpt-oss-120b",
-      "task": "keyboard",
-      "started": "2026-11-10T03:43:46.974Z",
-      "protocol": 10,
-      "wireProtocol": "strict-json",
-      "temperature": 1,
-      "reasoningEffort": "low",
-      "request": "Create a QWERTY keyboard with a message display, separate rows of letters, Space, Backspace, Clear, and Speak. Tapping letters and Space updates the display. Backspace removes one character. Clear empties it. Speak speaks the current nonempty message only when pressed; typing must not speak.",
-      "requestedAttempts": 5,
-      "stopped": true,
-      "sourceTraceSHA256": "037d8392114530f0ccd0521aa74d2dc451668abfed6f8c88519f835e7de7d991",
-      "attempts": [
-        {
-          "attempt": 1,
-          "nativeDraftOutcome": "failed",
-          "ordinaryPreviewAndExportReimport": "not-run",
-          "usage": {
-            "requests": 4,
-            "promptTokens": 3367,
-            "completionTokens": 267,
-            "cachedTokens": 0,
-            "usageAvailableForAllRequests": false
-          },
-          "statuses": [
-            400,
-            400,
-            200,
-            400
-          ],
-          "finishReasons": [
-            "unknown",
-            "unknown",
-            "stop",
-            "unknown"
-          ]
-        },
-        {
-          "attempt": 2,
-          "nativeDraftOutcome": "cancelled",
-          "ordinaryPreviewAndExportReimport": "not-run",
-          "usage": {
-            "requests": 5,
-            "promptTokens": 10600,
-            "completionTokens": 5410,
-            "cachedTokens": 5888,
-            "usageAvailableForAllRequests": false
-          },
-          "statuses": [
-            400,
-            200,
-            200,
-            400,
-            200
-          ],
-          "finishReasons": [
-            "unknown",
-            "stop",
-            "stop",
-            "unknown",
-            "stop"
-          ]
-        }
-      ]
-    },
-    {
-      "model": "openai/gpt-oss-20b",
-      "task": "custom",
-      "started": "2026-11-10T03:37:20.528Z",
-      "protocol": 10,
-      "wireProtocol": "strict-json",
-      "temperature": 1,
-      "reasoningEffort": "medium",
-      "request": "Create a classroom counting activity with a score starting at 0, an Add point button and Reset. Show Ready initially, Keep going for scores 1 and 2, and Goal reached at 3 or more. Reset restores score 0 and Ready. Keep it silent.",
-      "requestedAttempts": 1,
-      "stopped": false,
-      "sourceTraceSHA256": "d387a5fc3822f08d6ad1c23e0b3fbb4f96dbbdec277740b34c706cc01a8306cf",
-      "attempts": [
-        {
-          "attempt": 1,
-          "nativeDraftOutcome": "failed",
-          "ordinaryPreviewAndExportReimport": "not-run",
-          "usage": {
-            "requests": 7,
-            "promptTokens": 27304,
-            "completionTokens": 5318,
-            "cachedTokens": 2560,
-            "usageAvailableForAllRequests": true
-          },
-          "statuses": [
-            200,
-            200,
-            200,
-            200,
-            200,
-            200,
-            200
-          ],
-          "finishReasons": [
-            "stop",
-            "stop",
-            "stop",
-            "stop",
-            "stop",
-            "stop",
-            "stop"
-          ]
-        }
-      ]
+      ],
+      "sourceTraceFile": "gpt-oss-restaurant-strict-protocol-10-medium.json"
     },
     {
       "model": "qwen/qwen3.8-27b",
@@ -911,83 +762,164 @@
             "stop"
           ]
         }
-      ]
+      ],
+      "sourceTraceFile": "qwen-keyboard-five-strict-protocol-10.json"
     },
     {
       "model": "openai/gpt-oss-120b",
-      "task": "keyboard",
-      "started": "2026-11-10T03:54:32.371Z",
-      "protocol": 11,
-      "wireProtocol": "strict-json",
-      "temperature": 0.6,
-      "reasoningEffort": "low",
-      "request": "Create a QWERTY keyboard with a message display, separate rows of letters, Space, Backspace, Clear, and Speak. Tapping letters and Space updates the display. Backspace removes one character. Clear empties it. Speak speaks the current nonempty message only when pressed; typing must not speak.",
-      "requestedAttempts": 1,
-      "stopped": false,
-      "sourceTraceSHA256": "a17e074bbe5347c17060d3a0e8bf7546757d06c1fc8276de75342b1894865151",
-      "attempts": [
-        {
-          "attempt": 1,
-          "nativeDraftOutcome": "draft-ready",
-          "ordinaryPreviewAndExportReimport": "failed",
-          "usage": {
-            "requests": 4,
-            "promptTokens": 12042,
-            "completionTokens": 821,
-            "cachedTokens": 512,
-            "usageAvailableForAllRequests": false
-          },
-          "statuses": [
-            400,
-            200,
-            200,
-            200
-          ],
-          "finishReasons": [
-            "unknown",
-            "stop",
-            "stop",
-            "stop"
-          ]
-        }
-      ]
-    },
-    {
-      "model": "openai/gpt-oss-20b",
       "task": "custom",
-      "started": "2026-11-10T03:54:32.633Z",
-      "protocol": 11,
+      "started": "2026-11-10T03:36:24.257Z",
+      "protocol": 10,
       "wireProtocol": "strict-json",
-      "temperature": 0.6,
+      "temperature": 1,
       "reasoningEffort": "low",
-      "request": "Create a classroom counting activity with a score starting at 0, an Add point button and Reset. Show Ready initially, Keep going for scores 1 and 2, and Goal reached at 3 or more. Reset restores score 0 and Ready. Keep it silent.",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
       "requestedAttempts": 1,
       "stopped": false,
-      "sourceTraceSHA256": "1da839c369763cdbb42dfc4de93f5c6148d35e8c8e04a9bf6b199d15e509af18",
+      "sourceTraceSHA256": "f7ccb2afefcb79610e8a3143d3110bab2766ccaea0535d3dcefa445be3c1e71e",
       "attempts": [
         {
           "attempt": 1,
           "nativeDraftOutcome": "failed",
           "ordinaryPreviewAndExportReimport": "not-run",
           "usage": {
-            "requests": 3,
-            "promptTokens": 0,
-            "completionTokens": 0,
+            "requests": 6,
+            "promptTokens": 13828,
+            "completionTokens": 5690,
+            "cachedTokens": 3072,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            200,
+            400,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "stop",
+            "stop",
+            "stop",
+            "unknown",
+            "unknown"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-restaurant-strict-protocol-10-low.json"
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "task": "custom",
+      "started": "2026-11-10T03:37:20.528Z",
+      "protocol": 10,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a classroom counting activity with a score starting at 0, an Add point button and Reset. Show Ready initially, Keep going for scores 1 and 2, and Goal reached at 3 or more. Reset restores score 0 and Ready. Keep it silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "d387a5fc3822f08d6ad1c23e0b3fbb4f96dbbdec277740b34c706cc01a8306cf",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 7,
+            "promptTokens": 27304,
+            "completionTokens": 5318,
+            "cachedTokens": 2560,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-20-counter-strict-protocol-10-medium.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "keyboard",
+      "started": "2026-11-10T03:43:46.974Z",
+      "protocol": 10,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "low",
+      "request": "Create a QWERTY keyboard with a message display, separate rows of letters, Space, Backspace, Clear, and Speak. Tapping letters and Space updates the display. Backspace removes one character. Clear empties it. Speak speaks the current nonempty message only when pressed; typing must not speak.",
+      "requestedAttempts": 5,
+      "stopped": true,
+      "sourceTraceSHA256": "037d8392114530f0ccd0521aa74d2dc451668abfed6f8c88519f835e7de7d991",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 4,
+            "promptTokens": 3367,
+            "completionTokens": 267,
             "cachedTokens": 0,
             "usageAvailableForAllRequests": false
           },
           "statuses": [
             400,
             400,
+            200,
             400
           ],
           "finishReasons": [
             "unknown",
             "unknown",
+            "stop",
             "unknown"
           ]
+        },
+        {
+          "attempt": 2,
+          "nativeDraftOutcome": "cancelled",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 10600,
+            "completionTokens": 5410,
+            "cachedTokens": 5888,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            400,
+            200
+          ],
+          "finishReasons": [
+            "unknown",
+            "stop",
+            "stop",
+            "unknown",
+            "stop"
+          ]
         }
-      ]
+      ],
+      "sourceTraceFile": "gpt-oss-keyboard-strict-protocol-10-stopped.json"
     },
     {
       "model": "qwen/qwen3.8-27b",
@@ -1054,7 +986,87 @@
             "stop"
           ]
         }
-      ]
+      ],
+      "sourceTraceFile": "qwen-restaurant-strict-protocol-11-none-stopped.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "keyboard",
+      "started": "2026-11-10T03:54:32.371Z",
+      "protocol": 11,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "low",
+      "request": "Create a QWERTY keyboard with a message display, separate rows of letters, Space, Backspace, Clear, and Speak. Tapping letters and Space updates the display. Backspace removes one character. Clear empties it. Speak speaks the current nonempty message only when pressed; typing must not speak.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "a17e074bbe5347c17060d3a0e8bf7546757d06c1fc8276de75342b1894865151",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "failed",
+          "usage": {
+            "requests": 4,
+            "promptTokens": 12042,
+            "completionTokens": 821,
+            "cachedTokens": 512,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "unknown",
+            "stop",
+            "stop",
+            "stop"
+          ],
+          "previewEvidence": "gpt-oss-keyboard-strict-protocol-11-low-preview/evidence.json"
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-keyboard-strict-protocol-11-low.json"
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "task": "custom",
+      "started": "2026-11-10T03:54:32.633Z",
+      "protocol": 11,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "low",
+      "request": "Create a classroom counting activity with a score starting at 0, an Add point button and Reset. Show Ready initially, Keep going for scores 1 and 2, and Goal reached at 3 or more. Reset restores score 0 and Ready. Keep it silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "1da839c369763cdbb42dfc4de93f5c6148d35e8c8e04a9bf6b199d15e509af18",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 3,
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            400,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "unknown",
+            "unknown"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-20-counter-strict-protocol-11-low.json"
     },
     {
       "model": "qwen/qwen3.8-27b",
@@ -1099,7 +1111,8 @@
             "stop"
           ]
         }
-      ]
+      ],
+      "sourceTraceFile": "qwen-score-timer-strict-protocol-12-medium.json"
     },
     {
       "model": "openai/gpt-oss-120b",
@@ -1130,7 +1143,8 @@
           ],
           "finishReasons": [
             "stop"
-          ]
+          ],
+          "previewEvidence": "gpt-oss-keyboard-five-strict-protocol-12-attempt-1-preview/evidence.json"
         },
         {
           "attempt": 2,
@@ -1148,7 +1162,8 @@
           ],
           "finishReasons": [
             "stop"
-          ]
+          ],
+          "previewEvidence": "gpt-oss-keyboard-five-strict-protocol-12-attempt-2-preview/evidence.json"
         },
         {
           "attempt": 3,
@@ -1166,7 +1181,8 @@
           ],
           "finishReasons": [
             "stop"
-          ]
+          ],
+          "previewEvidence": "gpt-oss-keyboard-five-strict-protocol-12-attempt-3-preview/evidence.json"
         },
         {
           "attempt": 4,
@@ -1184,7 +1200,8 @@
           ],
           "finishReasons": [
             "stop"
-          ]
+          ],
+          "previewEvidence": "gpt-oss-keyboard-five-strict-protocol-12-attempt-4-preview/evidence.json"
         },
         {
           "attempt": 5,
@@ -1202,9 +1219,423 @@
           ],
           "finishReasons": [
             "stop"
+          ],
+          "previewEvidence": "gpt-oss-keyboard-five-strict-protocol-12-attempt-5-preview/evidence.json"
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-keyboard-five-strict-protocol-12.json"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "keyboard",
+      "started": "2026-11-10T04:32:06.467Z",
+      "protocol": 13,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a QWERTY keyboard with a message display, separate rows of letters, Space, Backspace, Clear, and Speak. Tapping letters and Space updates the display. Backspace removes one character. Clear empties it. Speak speaks the current nonempty message only when pressed; typing must not speak.",
+      "requestedAttempts": 5,
+      "stopped": false,
+      "sourceTraceSHA256": "03c0369748c3c89b3f505222dd8ae8cbb6d1c8d9df88205d69ab5db6a1d34d0f",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 2,
+            "promptTokens": 4563,
+            "completionTokens": 1566,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop"
+          ],
+          "previewEvidence": "qwen-keyboard-five-strict-protocol-13-attempt-1-preview/evidence.json"
+        },
+        {
+          "attempt": 2,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 1,
+            "promptTokens": 1950,
+            "completionTokens": 844,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200
+          ],
+          "finishReasons": [
+            "stop"
+          ],
+          "previewEvidence": "qwen-keyboard-five-strict-protocol-13-attempt-2-preview/evidence.json"
+        },
+        {
+          "attempt": 3,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 1,
+            "promptTokens": 1950,
+            "completionTokens": 1128,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200
+          ],
+          "finishReasons": [
+            "stop"
+          ],
+          "previewEvidence": "qwen-keyboard-five-strict-protocol-13-attempt-3-preview/evidence.json"
+        },
+        {
+          "attempt": 4,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 1,
+            "promptTokens": 1950,
+            "completionTokens": 1140,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200
+          ],
+          "finishReasons": [
+            "stop"
+          ],
+          "previewEvidence": "qwen-keyboard-five-strict-protocol-13-attempt-4-preview/evidence.json"
+        },
+        {
+          "attempt": 5,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 1,
+            "promptTokens": 1950,
+            "completionTokens": 1186,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200
+          ],
+          "finishReasons": [
+            "stop"
+          ],
+          "previewEvidence": "qwen-keyboard-five-strict-protocol-13-attempt-5-preview/evidence.json"
+        }
+      ],
+      "sourceTraceFile": "qwen-keyboard-five-strict-protocol-13.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T04:32:06.727Z",
+      "protocol": 13,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "low",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "437dc0a7a8af8b24d483a7818a49faee1300f20c50be0ea7c016e0f467251ef2",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 22584,
+            "completionTokens": 9258,
+            "cachedTokens": 768,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
           ]
         }
-      ]
+      ],
+      "sourceTraceFile": "gpt-oss-restaurant-strict-protocol-13-low.json"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T04:45:17.245Z",
+      "protocol": 14,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a score display starting at 0, Add 1, Remove 1 and Reset buttons. Remove must not go below zero. Reset returns the score to zero and status Ready. Also show Ready initially. Pressing T starts a two-second timer; only after it expires show Time up. The timer must not change the score. Keep the activity silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "41f28a90c4bd15a00b5afe70fa1d421dc573930db3201c6c47f9cf1c6e42ea2f",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 20884,
+            "completionTokens": 9849,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "qwen-score-timer-strict-protocol-14-medium.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T04:45:17.512Z",
+      "protocol": 14,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "low",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "cfaa6303f53e6b820d755beba53e6956fe84a3412ad05a717d39a462ea85662a",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 7,
+            "promptTokens": 26091,
+            "completionTokens": 3543,
+            "cachedTokens": 15872,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200,
+            200,
+            400
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "unknown"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-restaurant-strict-protocol-14-low.json"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T05:03:00.316Z",
+      "protocol": 15,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a score display starting at 0, Add 1, Remove 1 and Reset buttons. Remove must not go below zero. Reset returns the score to zero and status Ready. Also show Ready initially. Pressing T starts a two-second timer; only after it expires show Time up. The timer must not change the score. Keep the activity silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "2369b0f454adb1fd30ac64100f91e41c689a119c09935d386d2f50e5cd60b39d",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 23447,
+            "completionTokens": 6868,
+            "cachedTokens": 4096,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "qwen-score-timer-strict-protocol-15.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T05:03:00.582Z",
+      "protocol": 15,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "low",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "1c0b1e9f4a95122a82ead6a76ced246ddf2a8c0f7249bc0bf8313c3f4cf7aa03",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 2,
+            "promptTokens": 8204,
+            "completionTokens": 2816,
+            "cachedTokens": 3584,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop"
+          ],
+          "previewEvidence": "gpt-oss-restaurant-strict-protocol-15-low-preview/evidence.json"
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-restaurant-strict-protocol-15-low.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T05:16:46.331Z",
+      "protocol": 15,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "low",
+      "request": "Create a score display starting at 0, Add 1, Remove 1 and Reset buttons. Remove must not go below zero. Reset returns the score to zero and status Ready. Also show Ready initially. Pressing T starts a two-second timer; only after it expires show Time up. The timer must not change the score. Keep the activity silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "fdf385b82514bfeae586d3c237a973160f76f50a27c4bc614c9e0987196836c9",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 21795,
+            "completionTokens": 5819,
+            "cachedTokens": 7424,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            400,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "unknown",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-score-timer-strict-protocol-15-low.json"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T05:17:06.497Z",
+      "protocol": 15,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a board with Yes, No, Clear and one message display, initially empty. Hover Yes or No for 0.8 seconds to append that word. Show a visible hover cue. Moving away early cancels the choice; staying still after selection must not keep adding it. Clear empties the message. Use pointer dwell.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "2942b8d4b4836949bc2f93710d60a6994a55149eab45486591b6339dcd51fd44",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 25051,
+            "completionTokens": 5334,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "qwen-dwell-strict-protocol-15-medium.json"
     }
   ],
   "localComparison": {
@@ -1310,17 +1741,18 @@
   },
   "limitations": [
     "Protocols differ as observed failures were corrected; these runs are not a controlled model ranking.",
-    "Only successful keyboard drafts listed here were replayed in full native Preview. Restaurant runs failed, so none is a functional pass.",
-    "Local imported-grid visual requests failed despite native draft acceptance; explicit computed-style verification caught unchanged blue buttons.",
-    "Remaining real acceptance includes current broad creation, score/timer, access refinements, imported selected edits, final repeatability and deployed browser verification."
+    "Ordinary Preview and native roundtrip passes are recorded per attempt; isolated draft-ready status alone does not prove a working interface.",
+    "Native speech dispatch was recorded in isolated replay browsers; audible playback was not independently measured.",
+    "Local imported-grid visual requests failed despite native draft acceptance; computed-style verification caught unchanged blue buttons.",
+    "Remaining real acceptance includes score/timer, access refinements, further imported selected edits, final repeatability and deployed browser verification."
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol13: complete helper contract, quota estimates separated from usage, native reference allocation and data-safe fingerprints, canonical inspection/timer reference",
-    "nodeTests": 81,
-    "browserTests": 81,
+    "source": "protocol16: inspected object and nested wiring survive schema compaction, exact reference correction, persistent bounded validation, executable native timer guide",
+    "nodeTests": 84,
+    "browserTests": 85,
     "productionBuild": "pass"
   },
-  "modelSelection": "Still evaluating broad tasks. OSS120 protocol12 five keyboards all passed ordinary Preview and export/reimport; Qwen protocol10 four of five passed those checks. Qwen none mode failed and was not adopted. Medium Qwen restaurant remains the verified generic creation; timer/access and final repeats remain incomplete.",
+  "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",
   "keyboardVerificationNote": "OSS protocol12 initial viewport checks measured intentional hover-border scaling. Original failures/screenshots retained; every untouched archive subsequently passed text/layout checks with pointer off controls, interactions and native roundtrip. Earlier OSS protocol11 duplicate-display archive remains a functional failure."
 }

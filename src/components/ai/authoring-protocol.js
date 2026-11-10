@@ -10,7 +10,7 @@ const definitions={
   state:object({state:string,value:scalar}),
   update:object({state:string,expression:{...string,description:"Native formula; use single quotes for text, e.g. add_word(#label), 'Ready', or ''."}}),
   rule:object({condition:string,updates:array(ref("update"))}),
-  step:object({target:string,label:nullable({...string,description:"Grid/VSD content label; null for a Button or TabPanel. Never use click or active."}),data:fields}),
+  step:object({target:{...string,description:"Exact component ref, e.g. answer, without @. @ref.property substitutes scalar property values only."},label:nullable({...string,description:"Grid/VSD content label; null for a Button or TabPanel. Never use click or active."}),data:fields}),
   test:object({name:string,initial:states,steps:array(ref("step")),expect:states}),
 };
 const operationSchemas={
