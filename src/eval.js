@@ -67,6 +67,24 @@ export const Functions = {
   },
 };
 
+// Local authoring checks may compute values, but never write notes/files,
+// enqueue live actions, change the editor, or contact another service.
+const isolatedSafeFunctions=new Set(["increment","add_word","add_letter","complete","replace_last","replace_last_letter","random","max","min","if","abs","ClipText","Caret",
+  "slots.init","slots.cancel","slots.hasSlots","slots.duplicate","slots.slotName","slots.toString"]);
+export const canEvaluateIsolated=name=>isolatedSafeFunctions.has(name);
+export function nativeFunctionNames(registry=Functions,prefix="") {
+  return Object.entries(registry).flatMap(([key,value])=>{
+    const name=prefix+key;
+    return typeof value==="function"?[name]:value&&typeof value==="object"?nativeFunctionNames(value,name+"."):[];
+  });
+}
+function isolatedFunctions(registry=Functions,prefix="") {
+  return Object.fromEntries(Object.entries(registry).map(([key,value])=>{
+    const name=prefix+key;
+    return [key,typeof value==="function"?(canEvaluateIsolated(name)?value:()=>{throw new Error(`${name} changes live data or effects and is not executed by local checks. Verify it in Preview.`);}):value&&typeof value==="object"?isolatedFunctions(value,name+"."):value];
+  }));
+}
+
 /**
  * Translate an expression from Excel-like to Javascript
  *
@@ -144,8 +162,8 @@ const variableHandler = {
       let ps = prop.slice(1);
       result = target.data[ps];
       accessed.set(prop, Globals.data.allFields.has("#" + ps));
-    } else if (prop in Functions) {
-      result = Functions[prop];
+    } else if (prop in target.functions) {
+      result = target.functions[prop];
     } else {
       console.error("undefined", prop);
     }
@@ -166,7 +184,7 @@ const variableHandler = {
     } else if (prop.startsWith("_")) {
       return { configurable: true, enumerable: true };
     } else {
-      return Object.getOwnPropertyDescriptor(Functions, prop);
+      return Object.getOwnPropertyDescriptor(target.functions, prop);
     }
   },
 };
@@ -185,14 +203,14 @@ export function compileExpression(expression) {
     return [
       (context = {}) => {
         let states =
-          "states" in context
+          context.isolated ? context.states ?? {} : "states" in context
             ? { ...Globals.state.values, ...context.states }
             : Globals.state.values;
         let data = context.data ?? {};
         const r = exp(
           new Proxy(
             {
-              Functions,
+              functions:context.isolated?isolatedFunctions():Functions,
               states,
               data,
             },

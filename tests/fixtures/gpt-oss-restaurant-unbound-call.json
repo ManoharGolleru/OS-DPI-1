@@ -1,0 +1,127 @@
+{
+  "source": "Actual Groq GPT-OSS120B medium-reasoning draft from 2026-11-10T02:35:36.650Z",
+  "arguments": {
+    "operations": [
+      {
+        "nodes": [
+          {
+            "className": "Display",
+            "props": {
+              "background": "white",
+              "fontSize": 2,
+              "stateName": "$Message"
+            },
+            "ref": "msgDisplay"
+          },
+          {
+            "className": "Speech",
+            "props": {
+              "stateName": "$Speak"
+            },
+            "ref": "speech"
+          },
+          {
+            "className": "Button",
+            "props": {
+              "label": "Speak"
+            },
+            "ref": "speakBtn"
+          },
+          {
+            "className": "Button",
+            "props": {
+              "label": "Clear"
+            },
+            "ref": "clearBtn"
+          },
+          {
+            "className": "TabControl",
+            "props": {
+              "stateName": "$tabControl"
+            },
+            "ref": "tabs"
+          }
+        ],
+        "op": "insert",
+        "parent": "n2"
+      },
+      {
+        "nodes": [
+          {
+            "className": "TabPanel",
+            "props": {
+              "label": "Food"
+            },
+            "ref": "foodPanel"
+          },
+          {
+            "className": "TabPanel",
+            "props": {
+              "label": "Drinks"
+            },
+            "ref": "drinksPanel"
+          }
+        ],
+        "op": "insert",
+        "parent": "tabs"
+      },
+      {
+        "nodes": [
+          {
+            "className": "Grid",
+            "props": {},
+            "ref": "foodGrid"
+          }
+        ],
+        "op": "insert",
+        "parent": "foodPanel"
+      },
+      {
+        "nodes": [
+          {
+            "className": "Grid",
+            "props": {},
+            "ref": "drinksGrid"
+          }
+        ],
+        "op": "insert",
+        "parent": "drinksPanel"
+      },
+      {
+        "defaults": {
+          "grid": "foodGrid"
+        },
+        "op": "rows",
+        "rows": [
+          {
+            "label": "Bread"
+          },
+          {
+            "label": "Rice"
+          },
+          {
+            "label": "Soup"
+          }
+        ]
+      },
+      {
+        "defaults": {
+          "grid": "drinksGrid"
+        },
+        "op": "rows",
+        "rows": [
+          {
+            "label": "Water"
+          },
+          {
+            "label": "Juice"
+          },
+          {
+            "label": "Milk"
+          }
+        ]
+      }
+    ],
+    "summary": "Create restaurant communication board with message display, tabs for Food and Drinks, word grids, Speak and Clear buttons."
+  }
+}

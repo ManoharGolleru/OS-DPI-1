@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OS-DPI development benchmark</title>
+<style>
+  :root { font: 17px system-ui,sans-serif; color:#17212b; background:#f5f7fa; }
+  body { max-width:1050px; margin:2rem auto; padding:0 1rem; }
+  h1 { font-size:1.7rem; }
+  fieldset,article { background:white; border:1px solid #bbc5d0; border-radius:8px; padding:1rem; margin:1rem 0; }
+  label { display:block; margin:.8rem 0; }
+  select,input,textarea,button { font:inherit; padding:.45rem; }
+  textarea { width:100%; box-sizing:border-box; min-height:8rem; }
+  input[type=number] { width:4rem; }
+  button { margin:.25rem .5rem .25rem 0; cursor:pointer; }
+  pre { font-size:.8rem; white-space:pre-wrap; overflow-wrap:anywhere; max-height:28rem; overflow:auto; }
+  .note { color:#455567; }
+  #status { min-height:3rem; }
+</style>
+<body class="loaded">
+<h1>OS-DPI development benchmark</h1>
+<p>Runs real Groq requests using this browser origin’s saved key. Drafts stay in this tab’s memory. No board is installed or saved.</p>
+<p class="note">A draft passing isolated native checks still needs ordinary app import, Preview, interaction, and export/reimport verification. Keep this tab open until you download the evidence.</p>
+<form id="form">
+  <fieldset id="settings" disabled>
+    <legend>Batch</legend>
+    <label>Model <select id="model"></select></label>
+    <label>Attempts <input id="attempts" type="number" min="1" max="5" step="1" value="5" required></label>
+    <label>Temperature <input id="temperature" type="number" min="0" max="2" step="0.1" value="1" required></label>
+    <label>Reasoning effort <select id="effort"><option value="none">None (Qwen only)</option><option value="low" selected>Low</option><option value="medium">Medium</option></select></label>
+    <label>Task <select id="task"><option value="keyboard">QWERTY keyboard</option><option value="custom">Custom interface</option></select></label>
+    <label>Request <textarea id="request" required></textarea></label>
+    <label><input id="payloads" type="checkbox"> Include request and tool payloads in evidence (contains submitted/generated board text)</label>
+    <p class="note">Each attempt starts empty. Attempts run sequentially with the existing Groq quota pacing and an eight-minute limit per attempt. Starting a new batch replaces the previous batch in memory.</p>
+  </fieldset>
+  <button id="start" disabled>Start real batch</button>
+  <button id="stop" type="button" disabled>Stop</button>
+  <button id="download" type="button" disabled>Download drafts and evidence</button>
+</form>
+<p id="status" role="status" aria-live="polite">Loading development-only runner…</p>
+<section id="results" aria-label="Attempt results"></section>
+<script type="module" src="./runner.js"></script>
+</html>

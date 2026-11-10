@@ -24,7 +24,7 @@ jobs:
         working-directory: src
         run: npm install
       - name: Native document transaction tests
-        run: node --test tests/authoring.test.mjs
+        run: node --test tests/authoring*.test.mjs
       - name: Build application
         working-directory: src
         run: npm run build
@@ -33,7 +33,7 @@ jobs:
         run: |
           npm install --no-save --package-lock=false @playwright/test@1.65.0
           npx playwright install --with-deps chromium
-      - name: Native browser and archive tests (simulated model replies)
+      - name: Native browser tests and recorded-model archive replays
         working-directory: src
         run: npx playwright test --config=tests/playwright.config.js
       - uses: actions/upload-artifact@v7

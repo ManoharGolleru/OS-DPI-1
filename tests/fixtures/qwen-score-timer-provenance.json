@@ -1,0 +1,13 @@
+{
+  "source": "Untouched real Groq Qwen output; not a hand-written or simulated generation",
+  "model": "qwen/qwen3.8-27b",
+  "protocol": 23,
+  "sourceCommit": "75323792f64d9809b3a864768a5f50837680e78f",
+  "archiveSHA256": "3b08a0c8aa6a9d2d15df38df3c455c699149d561313cacde51ebbc9bf26d2cf3",
+  "traceSHA256": "c71e3ff84bcbc1ef89e3f4ae80aa18845ac3d5e6c9d83e9f5060444cba6e614d",
+  "requests": 9,
+  "reportedTokens": 45111,
+  "configuration": "medium/temperature1, adapting to none only after an explicit1000-token output allowance",
+  "request": "Create a score activity opening0/Ready, Add1, Remove1 floor0, Reset0/Ready, keyt two-second timer sets Timeup without changing score, no speech.",
+  "note": "Archive replay makes no Groq requests and does not establish fresh model reliability. Full real trace and independent Preview evidence retained in task outputs/evidence."
+}
