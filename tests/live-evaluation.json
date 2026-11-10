@@ -1937,6 +1937,20 @@
       "cachedTokens": 4096,
       "sourceTraceSHA256": "d053c8984895b10e42e5c2a24f8f6262fcfe6d4e54cb5e328b818cf4d64a0e75",
       "diagnosis": "Initial native edit and checks succeeded, then model repeated unchanged check commands instead of finish. Output allowance adapted to a reported1000-token limit. Later input quota exhaustion ended request; original board unchanged. No applied archive or visual pass."
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "protocol": 22,
+      "task": "score/timer",
+      "configuration": {
+        "reasoningEffort": "low",
+        "temperature": 0.6
+      },
+      "outcome": "quota-blocked",
+      "requests": 1,
+      "reportedTokens": 0,
+      "sourceTraceSHA256": "27342814179d9b3e80f527fa5c7b35e4b594df25b4511419ebeaf975cc42d48e",
+      "diagnosis": "First HTTP429 reports daily quota. No model generation, edit or acceptance proof; do not classify as model-quality failure."
     }
   ],
   "localComparison": {
@@ -2123,6 +2137,35 @@
       "ordinaryPreview": "Actual rendered button backgrounds remained rgb(135, 206, 235); imported Customize palette has greater CSS specificity. Native validation success did not establish visual success.",
       "evidence": [
         "qwen-dean-green-protocol-20-preview/evidence.json"
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 22,
+      "configuration": {
+        "reasoningEffort": "medium",
+        "temperature": 1
+      },
+      "request": "Make the selected imported grid light green; preserve vocabulary, actions, access, voices, notes, media and every other component.",
+      "requests": 1,
+      "promptTokens": 2787,
+      "completionTokens": 820,
+      "reportedTokens": 3607,
+      "sourceTraceSHA256": "33bacfd6179638634c00dee66b3a482c2c58bb8297098a74cccf60398a8a4d47",
+      "outcome": "pass",
+      "nativeDiffs": [
+        "Append one native Customize rule targeting the uniquely named static expansion grid; entire existing layout tree unchanged."
+      ],
+      "otherFiveJSONEntriesByteIdentical": true,
+      "mediaFilesByteIdentical": 11,
+      "actualOriginalEveryArchiveEntryUnchanged": true,
+      "actualChromePreview": "Existing I think\u2026 control populated the filtered grid; all four buttons computed rgb(144,238,144), using native navigation without state injection.",
+      "normalPreviewAndNativeExportReimport": "pass",
+      "desktopTabletHover": "pass",
+      "otherButtonBackgroundsUnchanged": true,
+      "evidence": [
+        "qwen-dean-green-protocol-22-preservation.json",
+        "qwen-dean-green-protocol-22-preview/evidence.json"
       ]
     }
   ],
