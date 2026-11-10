@@ -715,7 +715,7 @@ test('an explicit output-size rejection lowers the command cap and leaves room f
  await generate(page);
  expect(requests).toHaveLength(2);expect(requests[0].max_completion_tokens).toBeGreaterThan(1000);
  expect(requests[1]).toMatchObject({max_completion_tokens:1000,reasoning_effort:'none'});
- expect(requests[1].messages.some(m=>m.content.includes('Stage small complete edit commands'))).toBe(true);
+ expect(requests[1].messages.some(m=>m.content.includes('Combine related operations in complete commands'))).toBe(true);
  expect(await page.evaluate(()=>fixture.db.designName)).not.toBe('original');
  const databaseOriginal=await page.evaluate(async()=>{const database=await fixture.db.dbPromise;return (await database.get('store5',['original','layout'])).data;});
  expect(databaseOriginal.children[0].children).toEqual([]);
@@ -787,7 +787,7 @@ test('provider truncation asks for smaller complete commands with the actual rep
  ]);
  await generate(page,'Create a greeting display saying Hello.');
  expect(requests).toHaveLength(2);
- for(const request of requests){const task=JSON.parse(request.messages[1].content);expect(task.commandTokenBudget).toBe(request.max_completion_tokens);expect(task.editBatchLimit).toBe(Math.max(1,Math.floor(request.max_completion_tokens/400)));}
+ for(const request of requests){const task=JSON.parse(request.messages[1].content);expect(task.commandTokenBudget).toBe(request.max_completion_tokens);expect(task.editBatchHint).toBe(Math.max(1,Math.floor(request.max_completion_tokens/400)));}
  expect(requests[1].messages.some(m=>m.content.includes('command was truncated at')&&m.content.includes('No partial command was applied'))).toBe(true);
  await buttons(page);await expect(page.locator('#UI')).toContainText('Hello');
 });
@@ -848,4 +848,13 @@ test('imported CSS guidance scopes a selected unique Grid and preserves other ba
  await buttons(page);await expect(page.locator('#UI').getByRole('button',{name:'Chosen',exact:true})).toHaveCSS('background-color','rgb(144, 238, 144)');
  await expect(page.locator('#UI').getByRole('button',{name:'Other',exact:true})).toHaveCSS('background-color','rgb(135, 206, 235)');
  expect(errors).toEqual([]);
+});
+
+
+test('empty model steps request real progress while retaining the staged document',async({page})=>{
+ const {requests}=await setup(page,[['edit',{operations:[{op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Greeting'}}]},{op:'bind',target:'init',rules:[{updates:{$Greeting:"'Hello'"}}]}]}],['edit',{operations:[]}],['finish',{summary:'Created the greeting.'}]]);
+ await generate(page,'Create a greeting display saying Hello.');
+ expect(requests).toHaveLength(3);const task=JSON.parse(requests[2].messages[1].content);
+ expect(task.lastResults.some(r=>!r.ok&&r.error.includes('No edits or new checks'))).toBe(true);
+ await buttons(page);await expect(page.locator('#UI .display')).toHaveText('Hello');
 });

@@ -1951,6 +1951,20 @@
       "reportedTokens": 0,
       "sourceTraceSHA256": "27342814179d9b3e80f527fa5c7b35e4b594df25b4511419ebeaf975cc42d48e",
       "diagnosis": "First HTTP429 reports daily quota. No model generation, edit or acceptance proof; do not classify as model-quality failure."
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 22,
+      "task": "score/timer",
+      "configuration": {
+        "reasoningEffort": "medium, then none only after explicit1000 output allowance",
+        "temperature": 1
+      },
+      "outcome": "failed",
+      "requests": 14,
+      "reportedTokens": 41171,
+      "sourceTraceSHA256": "456358c9f1f473749b5aee2ea57909dd7578d2e7875aa9fc76aba103b45392a2",
+      "diagnosis": "Ten command rounds staged layout/actions, with several one-operation and repeated bindings plus one empty edit. Final timer batch used eight operations but bound TimerHandler rather than enclosing Method and rolled back. Late input quota wait could not fit remaining task time. No accepted archive or ordinary Preview pass."
     }
   ],
   "localComparison": {
@@ -2063,9 +2077,9 @@
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol22: cross-section created refs/parents, native UID distinction, safe native CSS guidance, compact layout inventory and submission feedback",
+    "source": "protocol23: related-operation batching guidance, advisory batch hint, and rejection of empty edits without new checks or submission",
     "nodeTests": 89,
-    "browserTests": 94,
+    "browserTests": 95,
     "productionBuild": "pass"
   },
   "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",
