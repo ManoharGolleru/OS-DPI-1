@@ -2022,6 +2022,46 @@
       "reportedTokens": 44348,
       "sourceTraceSHA256": "49cdd6e6a7f504e60d63eb512056313d290d78e2480435305f9efdd7c0343dcc",
       "diagnosis": "Six bindings used Display instead of $Display. Batch errors named generated ActionUpdate IDs; the rolled-back IDs did not exist for subsequent inspections. More schema inspections followed, then daily quota exhaustion. No accepted draft or ordinary Preview pass. Protocol24 reports the submitted bind state before Action creation and explicitly documents $state fields; live requalification is pending quota reset."
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "protocol": 24,
+      "task": "imported DEAN selected spacing",
+      "outcome": "quota-blocked before accepted edit",
+      "requests": 3,
+      "reportedTokens": 9939,
+      "sourceTraceSHA256": "60a536868797174d02dc90eddcfb0fc4b72265ec544c4470e0e788496bd3170a",
+      "toolOutcomes": [
+        {
+          "tool": "edit",
+          "ok": true
+        },
+        {
+          "tool": "check",
+          "ok": true
+        }
+      ],
+      "note": "Retry after earlier short provider retry window still ended in a daily limit. No new24 functional acceptance; original board preserved. Do not infer model quality from quota refusal."
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 24,
+      "task": "dwell Yes/No/Clear",
+      "outcome": "quota-blocked before accepted edit",
+      "requests": 3,
+      "reportedTokens": 6814,
+      "sourceTraceSHA256": "7dc1039e81fa612b2941eb912b89c61994959efac94d36daa3134dafacd09b87",
+      "toolOutcomes": [
+        {
+          "tool": "inspect",
+          "ok": true
+        },
+        {
+          "tool": "inspect",
+          "ok": true
+        }
+      ],
+      "note": "Retry after earlier short provider retry window still ended in a daily limit. No new24 functional acceptance; original board preserved. Do not infer model quality from quota refusal."
     }
   ],
   "localComparison": {
@@ -2138,7 +2178,7 @@
     "nodeTests": 90,
     "browserTests": 97,
     "productionBuild": "pass",
-    "live24": "not run: both models reached daily quota; earlier real outputs and24 deterministic/regression checks are separate evidence"
+    "live24": "Real dwell and imported-spacing retries were quota-blocked before accepted edits. No fresh24 fulfillment result. Real23 timer/22 imported-styling archives and24 deterministic checks remain separate evidence."
   },
   "modelSelection": "Qwen3.8 27B is the default for new authoring sessions based on verified breadth:5/5 keyboard cohort, restaurant, selected edits, imported styling and a real score/timer activity. Existing supported choices are preserved and OSS120 remains selectable. This is a practical default, not a controlled model ranking. The broad timer used45111reported tokens; dwell/two-switch, OSS imported edits, further economy and final release qualification remain incomplete.",
   "keyboardVerificationNote": "OSS protocol12 initial viewport checks measured intentional hover-border scaling. Original failures/screenshots retained; every untouched archive subsequently passed text/layout checks with pointer off controls, interactions and native roundtrip. Earlier OSS protocol11 duplicate-display archive remains a functional failure.",
