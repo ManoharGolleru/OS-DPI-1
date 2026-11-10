@@ -12,7 +12,7 @@ Import a complete `.osdpi` with the file field, then describe changes. All nativ
 
 ## Open-ended design, not a template menu
 
-The runtime registry supplies all reachable native component definitions and supported properties. The AI's general tools inspect, insert, update, move, remove and bind actions across the six native sections. Examples are reference material, not a component allowlist.
+The runtime registry supplies all reachable native component definitions and supported properties. The AI's general tools inspect and atomically edit all six native sections. Component creation uses `insert {parent,nodes}`; vocabulary/data creation uses `rows {rows,defaults}`. Updates use `props`, and moves, removals and bindings target stable native refs. Unsupported fields are rejected instead of silently ignored. Examples are reference material, not a component allowlist.
 
 A small optional keyboard recipe saves repetitive generation of 26 content rows. It returns ordinary native components and actions and does not restrict later edits. Tabs, visual scenes, radio controls, dialogs, custom cues, counters, conditional actions, timers, scanning and other supported native components use the same generic editor.
 
@@ -39,6 +39,12 @@ These regression tests do not prove how reliably a live model interprets every r
 
 The implementation is under live evaluation; deployment acceptance is not yet complete. Keep every failed and successful run, the tested source revision, request count, reported/cached/reasoning tokens, pacing, normal Preview interactions and archive roundtrip results. Model choice is based on functional success and tokens per successful task, not model size or a mocked tool response.
 
+The current measured run ledger is in `tests/live-evaluation.json`. One five-attempt keyboard batch produced four Qwen drafts that subsequently passed ordinary Preview and native export/reimport; its failed attempt and all five failed OSS attempts are retained. General restaurant creation still failed in the recorded batches. This is not release acceptance or a final model ranking. The optional keyboard helper's success cannot establish arbitrary interface-building quality.
+
+A separate local-only experiment used one official LFM3 1.7B MLX checkpoint. Its keyboard and selected Clear-button edit passed ordinary Preview, but general restaurant creation failed. An imported-grid edit passed isolated validation yet failed the requested visible color change under existing custom CSS. The real experiment found the AI adapter missing native literal-color validation; the adapter now reuses OS-DPI's color validator. The local model is not integrated as a production provider based on these results.
+
 Run opt-in provider tests with `src/tests/playwright.live.config.js` and a securely configured `GROQ_API_KEY` or `GROQ_TEST_ENV`. The ordinary regression suite uses simulated provider replies; it must not be represented as live model evidence. The app also offers opt-in, memory-only diagnostics. Payload collection is separate and should be enabled only for synthetic boards or a deliberately reviewed report. Keys are excluded from exports and diagnostics.
 
 Groq references: [free-tier limits](https://console.groq.com/docs/rate-limits), [local tool calling](https://console.groq.com/docs/tool-use/local-tool-calling), [reasoning controls](https://console.groq.com/docs/reasoning).
+
+For same-origin saved-key evaluation, open `/OS-DPI-1/tests/live-benchmark/` on the local Vite server. This development-only page sends real requests through the existing transport, refuses IndexedDB writes, and downloads diagnostic evidence plus native draft archives. It never displays or extracts the saved key. A `draft-ready` result is isolated validation only: import every archive into the ordinary application and separately verify Preview, interactions, speech timing and export/reimport. Failed and stopped attempts must remain in the evidence.

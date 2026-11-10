@@ -1,11 +1,12 @@
 import {AIError, getAIKey} from "./index";
+import {diagnosticFingerprint} from "./authoring-diagnostics";
 const rates=new Map();
 const recentUsage=new Map();
 let rateKey="";
 export const lastAuthoringRate=model=>rates.get(model) || null;
 
 /** One Groq local-tool turn. Other AI features keep their existing request path. */
-export async function aiToolTurn({model, messages, tools, signal, maxTokens = 2200, toolChoice="auto", onDiagnostic=()=>{}}) {
+export async function aiToolTurn({model, messages, tools, signal, maxTokens = 2200, toolChoice="auto", temperature=1, onDiagnostic=()=>{}}) {
   const started=performance.now();
   const key = getAIKey("groq");
   if(key!==rateKey){rates.clear();recentUsage.clear();rateKey=key;}
@@ -17,7 +18,7 @@ export async function aiToolTurn({model, messages, tools, signal, maxTokens = 22
       method: "POST", signal,
       headers: {"Content-Type":"application/json", Authorization:`Bearer ${key}`},
       body: JSON.stringify({model,messages,tools,tool_choice:toolChoice,parallel_tool_calls:false,
-        reasoning_effort:reasoningEffort,max_completion_tokens:maxTokens,
+        reasoning_effort:reasoningEffort,temperature,max_completion_tokens:maxTokens,
         ...(model.startsWith("qwen/") ? {reasoning_format:"hidden"} : {})}),
     });
   } catch(error) {
@@ -49,14 +50,20 @@ export async function aiToolTurn({model, messages, tools, signal, maxTokens = 22
     : response.status === 413 ? "request-size"
     : response.status === 429 ? /tokens per day|requests per day|\bTPD\b|\bRPD\b/i.test(data.error?.message||"")||rate.requestsRemaining===0?"daily-limit":"rate-limit"
     : ["tool_use_failed","tool_use_required"].includes(data.error?.code) ? "tool-call" : "http";
-  onDiagnostic({stage:"provider",status:response.status,code:response.ok?"ok":kind,
+  const failed=typeof data.error?.failed_generation==="string"?data.error.failed_generation:"";
+  const providerCode=["tool_use_failed","tool_use_required"].includes(data.error?.code)?data.error.code:"other";
+  onDiagnostic({stage:"provider",status:response.status,code:response.ok?"ok":kind,providerCode:response.ok?undefined:providerCode,
     finishReason:["stop","tool_calls","length","content_filter"].includes(choice?.finish_reason)?choice.finish_reason:"unknown",
     promptTokens:data.usage?.prompt_tokens || 0,completionTokens:data.usage?.completion_tokens || 0,
     cachedTokens:data.usage?.prompt_tokens_details?.cached_tokens || 0,
     reasoningTokens:data.usage?.completion_tokens_details?.reasoning_tokens || 0,elapsedMs:Math.round(performance.now()-started),
     tokenLimit:Number.isFinite(rate.limit)?rate.limit:null,tokensRemaining:Number.isFinite(rate.remaining)?rate.remaining:null,
     requestsRemaining:Number.isFinite(rate.requestsRemaining)?rate.requestsRemaining:null,
-    maxTokens,reasoningEffort,quotaSource:rate.source});
+    maxTokens,reasoningEffort,temperature,quotaSource:rate.source,
+    ...(!response.ok?{details:{toolChoice,toolSchemaFingerprint:diagnosticFingerprint(JSON.stringify(tools)),providerError:{
+      type:data.error?.type,code:data.error?.code,param:data.error?.param,message:data.error?.message,
+      ...(failed?{failedGeneration:{originalLength:failed.length,truncated:failed.length>2800,head:failed.slice(0,1400),tail:failed.length>1400?failed.slice(-1400):""}}:{}),
+    }}}:{})});
   if(!response.ok) {
     const error = new AIError(kind, data.error?.message || `Groq returned HTTP ${response.status}.`);
     error.retryAfter = response.headers.get("retry-after");

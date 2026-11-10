@@ -75,6 +75,17 @@ test('real Qwen omission of the Backspace flag is resolved from the requested na
   expect(await page.evaluate(()=>fixture.Globals.state.get('$Display'))).toBe('h');
 });
 
+test('recorded Qwen individual-letter recipe error gives row-string guidance and can repair without partial installation',async({page})=>{
+  const {requests}=await setup(page,[['recipe',{name:'keyboard',keyRows:[...'QWERTYUIOPASDFGHJKLZXCVBNM'],backspace:true,summary:'Created keyboard.'}],
+    ['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard with standard rows.'}]]);
+  await generate(page);
+  expect(requests).toHaveLength(2);
+  expect(JSON.stringify(requests[1].messages)).toContain('Omit keyRows for standard QWERTY');
+  await buttons(page);
+  await page.locator('#UI').getByRole('button',{name:'h',exact:true}).click();
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Display'))).toBe('h');
+});
+
 test('generic native activity can submit its action tests in one request',async({page})=>{
   const {requests}=await setup(page,[['edit',{operations:[
     {op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Score'}},{className:'Button',ref:'add',props:{label:'Add one'}}]},
@@ -107,7 +118,11 @@ test('real activity omission of native init cannot pass the requested opening-st
     {op:'bind',target:'add',rules:[{updates:{$Score:'increment(1)',$Status:"'Keep going'"}}]},
   ],summary:'Created counting activity.',tests:[{steps:[],expect:{$Score:0,$Status:'Ready'}},{steps:[{target:'add'}],expect:{$Score:1,$Status:'Keep going'}}]}],
   async(route,requests)=>{
-    expect(JSON.stringify(requests.at(-1).messages)).toContain('got undefined');
+    const feedback=requests.at(-1).messages.filter(m=>m.role==='tool').map(m=>JSON.parse(m.content));
+    expect(feedback.at(-1)).toMatchObject({ok:false,staged:true});
+    expect(feedback.at(-1).created.some(n=>n.ref==='add')).toBe(true);
+    expect(feedback.at(-1).instruction).toContain('do not repeat');
+    expect(JSON.stringify(feedback)).toContain('expected 0');
     expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
     await route.fulfill({json:toolReply('edit',{operations:[{op:'bind',target:'init',rules:[{updates:{$Score:'0',$Status:"'Ready'"}}]}],summary:'Initialized score and status.'},'fixed-init'),headers:{'x-ratelimit-remaining-tokens':'99999'}});
   }]);
@@ -144,8 +159,8 @@ test('local expression tests do not inherit live messages and honor native non-g
   const checks=await page.evaluate(()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
     f.Globals.state.update({$Display:'Private live message'});
-    s.edit([{op:'insert',parent:'page',node:{className:'Grid',ref:'words',props:{name:'words'},children:[{className:'GridFilter',props:{field:'#category',operator:'equals',value:"'food'"}}]}},
-      {op:'insert',parent:'content',rows:[{label:'Bread',category:'food'},{label:'Water',category:'drink'}]},
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Grid', ref: 'words', props: { name: 'words' }, children: [{ className: 'GridFilter', props: { field: '#category', operator: 'equals', value: "'food'" } }] }] },
+      { op: "rows", rows: [{ label: 'Bread', category: 'food' }, { label: 'Water', category: 'drink' }] },
       {op:'bind',target:'words',rules:[{updates:{$Display:'add_word(#label)'}}]}]);
     return f.exercise(s,[{steps:[{target:'words',label:'Bread'}],expect:{$Display:'Bread '}}]);
   });
@@ -158,7 +173,7 @@ test('qualified native functions are discoverable and local checks cannot mutate
     const f=fixture,s=f.documentSession(f.emptyNative());
     f.Globals.data.setNoteRows([{label:'Keep my note'}]);
     const native=await import('/OS-DPI-1/components/ai/authoring-native.js');
-    s.edit([{op:'insert',parent:'page',node:{className:'Button',ref:'test',props:{label:'Test'}}},
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'test', props: { label: 'Test' } }] },
       {op:'bind',target:'test',rules:[{updates:{$Display:"slots.toString(slots.init('I want bread'))"}}]}]);
     const pure=native.exercise(s,[{steps:[{target:'test'}],expect:{$Display:'I want bread'}}]);
     const queuedBefore=f.Globals.actions.eventQueue.length;
@@ -180,8 +195,8 @@ test('action checks use the same string dataset values as rendered native button
   await setup(page,[]);
   const result=await page.evaluate(()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Grid',ref:'numbers',props:{rows:1,columns:1}}},
-      {op:'insert',parent:'content',rows:[{label:'Two',amount:2}]},
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Grid', ref: 'numbers', props: { rows: 1, columns: 1 } }] },
+      { op: "rows", rows: [{ label: 'Two', amount: 2 }] },
       {op:'bind',target:'numbers',rules:[{updates:{$Result:'#amount + 1'}}]}]);
     const checks=f.exercise(s,[{steps:[{target:'numbers',label:'Two'}],expect:{$Result:'21'}}]);
     f.installNative(s.snapshot());return checks;
@@ -196,7 +211,7 @@ test('keyboard recipe preserves an imported speech state and current notes',asyn
   await setup(page,[]);
   const result=await page.evaluate(()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Speech',props:{stateName:'$ImportedSpeak',voiceURI:'test-voice'}}}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Speech', props: { stateName: '$ImportedSpeak', voiceURI: 'test-voice' } }] }]);
     f.Globals.data.setNoteRows([{label:'A saved note'}]);
     f.keyboardRecipe(s,{backspace:true});
     const checks=f.exercise(s,s.nativeTests);
@@ -261,7 +276,7 @@ test('all native schema classes, selection and stable references are exposed',as
   const {errors}=await setup(page,[]);
   const result=await page.evaluate(()=>{
     const s=fixture.documentSession(fixture.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Stack',ref:'group'}},{op:'insert',parent:'page',node:{className:'Button',ref:'choice',props:{label:'Pick'}}}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Stack', ref: 'group' }] },{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'choice', props: { label: 'Pick' } }] }]);
     s.edit([{op:'move',target:'choice',parent:'group'},{op:'update',target:'choice',props:{label:'Still selected'}}]);
     return {classes:Object.keys(s.catalog),label:s.find('group').children[0].props.label,errors:s.check().errors};
   });
@@ -357,7 +372,7 @@ test('malformed and traversal archives leave storage untouched',async({page})=>{
 test('new external service connections require consent before applying',async({page})=>{
   const {errors}=await setup(page,[['inspect',{target:'method'}],async route=>{
     const target=await page.evaluate(()=>fixture.documentSession(fixture.captureNative()).design.method.children[0]._ref);
-    await route.fulfill({json:toolReply('edit',{operations:[{op:'insert',parent:target,node:{className:'SocketHandler',props:{URL:'wss://example.invalid/socket'}}},{op:'insert',parent:'page',node:{className:'Button',props:{name:'listen',label:'Listen'}}}]})});
+    await route.fulfill({json:toolReply('edit',{operations:[{ op: 'insert', parent: target, nodes: [{ className: 'SocketHandler', props: { URL: 'wss://example.invalid/socket' } }] },{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { name: 'listen', label: 'Listen' } }] }]})});
   },['finish',{summary:'Added an external input connection.'}]]);
   await generate(page,'Add this external input connection');
   await expect(page.getByText('Review before applying')).toBeVisible();
@@ -375,14 +390,14 @@ test('Qwen selection is per-authoring-request, not the conversational model',asy
 });
 
 test('generic tabs and vocabulary use the existing native navigation',async({page})=>{
-  const ops=[{op:'insert',parent:'page',node:{className:'TabControl',ref:'tabs',props:{stateName:'$view'},children:[
-    {className:'TabPanel',props:{name:'food',label:'Food'},children:[{className:'Button',ref:'food',props:{name:'foodword',label:'Bread'}}]},
-    {className:'TabPanel',props:{name:'drinks',label:'Drinks'},children:[{className:'Button',ref:'drink',props:{name:'drinkword',label:'Water'}}]},
-  ]}},{op:'insert',parent:'page',node:{className:'Display',props:{stateName:'$Display'}}},
+  const ops=[{ op: 'insert', parent: 'page', nodes: [{ className: 'TabControl', ref: 'tabs', props: { stateName: '$view' }, children: [
+                { className: 'TabPanel', props: { name: 'food', label: 'Food' }, children: [{ className: 'Button', ref: 'food', props: { name: 'foodword', label: 'Bread' } }] },
+                { className: 'TabPanel', props: { name: 'drinks', label: 'Drinks' }, children: [{ className: 'Button', ref: 'drink', props: { name: 'drinkword', label: 'Water' } }] },
+            ] }] },{ op: 'insert', parent: 'page', nodes: [{ className: 'Display', props: { stateName: '$Display' } }] },
   {op:'bind',target:'init',rules:[{updates:{$Display:"''"}}]},
   {op:'bind',target:'food',rules:[{updates:{$Display:'add_word(#label)'}}]},
   {op:'bind',target:'drink',rules:[{updates:{$Display:'add_word(#label)'}}]}];
-  const {errors}=await setup(page,[['edit',{operations:ops}],['finish',{summary:'Two native tabs with composition.',tests:[{steps:[],expect:{$Display:''}},{steps:[{target:'food'},{target:'drink'}],expect:{$Display:'Bread Water '}}]}]]);await generate(page,'Make Food and Drinks tabs.');await buttons(page);
+  const {errors}=await setup(page,[['edit',{operations:ops,tests:[{steps:[],expect:{$Display:''}},{steps:[{target:'food'},{target:'drink'}],expect:{$Display:'Bread Water '}}]}],['finish',{summary:'Two native tabs with composition.'}]]);await generate(page,'Make Food and Drinks tabs.');await buttons(page);
   await page.locator('#UI').getByRole('button',{name:'Bread',exact:true}).click();
   await page.locator('#UI').getByRole('button',{name:'Drinks',exact:true}).click();
   await page.locator('#UI').getByRole('button',{name:'Water',exact:true}).click();
@@ -439,6 +454,22 @@ test('observed Groq required-tool failure is classified and repaired internally'
   expect(await page.evaluate(()=>fixture.panel.usage.calls)).toBe(3);
 });
 
+test('opted-in provider failure details preserve malformed endings and scrub credentials',async({page})=>{
+  const failed='{"operations":['+' '.repeat(3100)+'BROKEN_END gsk_synthetic_secret_123456789012345';
+  await setup(page,[async route=>route.fulfill({status:400,json:{error:{type:'invalid_request_error',code:'tool_use_failed',param:'tools',message:'Generated call did not match schema',failed_generation:failed}}}),
+    ['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard.'}],
+  ]);
+  await page.getByText('Model and checks',{exact:true}).click();
+  await page.getByTestId('author-diagnostics').check();await page.getByTestId('author-diagnostics-text').check();
+  await generate(page,'Create a QWERTY keyboard with Speak, Clear, Space and Backspace.');
+  const event=await page.evaluate(()=>fixture.panel.diagnostics.report.events.find(e=>e.stage==='provider'&&e.status===400));
+  expect(event.providerCode).toBe('tool_use_failed');
+  expect(event.details).toMatchObject({toolChoice:'auto',providerError:{type:'invalid_request_error',code:'tool_use_failed',param:'tools',failedGeneration:{originalLength:failed.length,truncated:true}}});
+  expect(event.details.toolSchemaFingerprint).toMatch(/^[a-f0-9]{8}$/);
+  expect(event.details.providerError.failedGeneration.tail).toContain('BROKEN_END');
+  expect(JSON.stringify(event)).not.toContain('gsk_');
+});
+
 test('prose after staged edits asks for finish instead of accepting a claim',async({page})=>{
   const {requests}=await setup(page,[['recipe',{name:'keyboard',backspace:true}],
     async route=>route.fulfill({json:{choices:[{finish_reason:'stop',message:{role:'assistant',content:'Finished your keyboard.'}}]}}),
@@ -451,7 +482,7 @@ test('prose after staged edits asks for finish instead of accepting a claim',asy
 
 test('failed interaction checks prevent finish until the actual actions are corrected',async({page})=>{
   const {requests}=await setup(page,[['edit',{operations:[
-    {op:'insert',parent:'page',node:{className:'Button',ref:'scorebutton',props:{label:'Add',name:'score'}}},
+    { op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'scorebutton', props: { label: 'Add', name: 'score' } }] },
     {op:'bind',target:'init',rules:[{updates:{$Score:'0'}}]},
     {op:'bind',target:'scorebutton',rules:[{updates:{$Score:'increment(2)'}}]},
   ]}],['check',{tests:[{steps:[],expect:{$Score:0}},{steps:[{target:'scorebutton'}],expect:{$Score:1}}]}],
@@ -486,7 +517,7 @@ test('failed requests retain opt-in diagnostics and leave the original untouched
 
 test('content-only generation does not report success with empty Preview',async({page})=>{
   const {errors,requests}=await setup(page,[
-    ['edit',{operations:[{op:'insert',parent:'content',labels:['Water','Help']}]}],
+    ['edit',{operations:[{ op: "rows", rows: Array.from(['Water', 'Help'], label => ({ label })) }]}],
     ['finish',{title:'Finished board',summary:'Created a communication board.'}],
     ['recipe',{name:'keyboard',backspace:true}],
     ['finish',{title:'Typing board',summary:'Built a native QWERTY keyboard with controls.'}],
@@ -502,7 +533,7 @@ test('content-only generation does not report success with empty Preview',async(
 
 test('incomplete QWERTY output requires repair before finish is accepted',async({page})=>{
   const {errors,requests}=await setup(page,[
-    ['edit',{operations:[{op:'insert',parent:'page',node:{className:'Button',props:{label:'A',name:'a'}}}]}],
+    ['edit',{operations:[{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'A', name: 'a' } }] }]}],
     ['finish',{title:'Keyboard',summary:'Finished full keyboard.'}],
     ['recipe',{name:'keyboard',backspace:true}],
     ['finish',{title:'Keyboard',summary:'Finished full keyboard.'}],
@@ -545,6 +576,7 @@ test('actual media-rich repository archive retains its sections and resource has
   await page.goto('/OS-DPI-1/#import-original',{waitUntil:'domcontentloaded'});
   await expect(page.getByTestId('author-import')).toBeVisible();
   await page.getByTestId('author-import').setInputFiles(new URL('../../examples/DEAN.osdpi',import.meta.url).pathname);
+  await page.getByRole('button',{name:'Import this design',exact:true}).click();
   await page.waitForURL(/#DEAN$/);
   await expect(page.getByTestId('author-run')).toBeVisible();
   const before=await page.evaluate(async()=>{

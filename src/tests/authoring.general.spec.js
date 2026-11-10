@@ -10,11 +10,24 @@ async function preview(page) {
   await expect(page.locator('body')).not.toHaveClass(/designing/);
 }
 
+test('real local-model quoted color mistake is rejected by the native color validator before staging',async({page})=>{
+  const result=await page.evaluate(()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative()),before=f.fingerprint(s.snapshot());
+    let error;try{s.edit([{op:'insert',parent:'page',nodes:[{className:'Grid',props:{background:"'lightgreen'"}}]}]);}catch(e){error=e.message;}
+    const unchanged=f.fingerprint(s.snapshot())===before;
+    s.edit([{op:'insert',parent:'page',nodes:[{className:'Grid',ref:'valid',props:{background:'lightgreen'}}]},{op:'rows',rows:[{label:'Color check'}]}]);
+    f.installNative(s.snapshot());return {error,unchanged};
+  });
+  expect(result.error).toContain('Invalid native color');expect(result.unchanged).toBe(true);
+  await preview(page);
+  await expect(page.locator('#UI').getByRole('button',{name:'Color check',exact:true})).toHaveCSS('background-color','rgb(144, 238, 144)');
+});
+
 test('display-only native authoring produces ordinary Preview output',async({page})=>{
   const result=await page.evaluate(async()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
     const operations=[
-      {op:'insert',parent:'page',node:{className:'Display',ref:'welcome',props:{stateName:'$Greeting'}}},
+      { op: 'insert', parent: 'page', nodes: [{ className: 'Display', ref: 'welcome', props: { stateName: '$Greeting' } }] },
       {op:'bind',target:'init',rules:[{updates:{$Greeting:"'Welcome to class'"}}]},
     ];
     s.edit(operations);
@@ -36,7 +49,7 @@ test('native state filters and conditional action metadata agree with Preview',a
         {className:'Grid',ref:'food',props:{rows:1,columns:2,tone:'Calm'},children:[{className:'GridFilter',props:{field:'#category',operator:'equals',value:'$Category'}}]},
         {className:'Display',props:{stateName:'$Result'}},
       ]},
-      {op:'insert',parent:'content',rows:[{label:'Bread',category:'FOOD'},{label:'Water',category:'drink'}]},
+      { op: "rows", rows: [{ label: 'Bread', category: 'FOOD' }, { label: 'Water', category: 'drink' }] },
       {op:'bind',target:'init',rules:[{updates:{$Category:"'food'",$Result:"''"}}]},
       {op:'bind',target:'food',rules:[
         {condition:"#ComponentName = 'food' && #ComponentType = 'Grid' && #GridTone = 'Calm'",updates:{$Result:'add_word(#label)'}},
@@ -60,17 +73,17 @@ test('duplicate updates use native last-value and reducer semantics',async({page
   const result=await page.evaluate(()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
     s.edit([
-      {op:'insert',parent:'page',node:{className:'Button',ref:'score',props:{label:'Score'}}},
+      { op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'score', props: { label: 'Score' } }] },
       {op:'bind',target:'init',rules:[{updates:{$Score:'0'}}]},
-      {op:'insert',parent:'actions',node:{className:'Action',props:{origin:'score'},children:[
-        {className:'ActionCondition',props:{Condition:"#name = 'score' && #ComponentName = 'score' && #ComponentType = 'Button'"}},
-        {className:'ActionUpdate',props:{stateName:'$Score',newValue:'increment(1)'}},
-        {className:'ActionUpdate',props:{stateName:'$Score',newValue:'increment(4)'}},
-      ]}},
+      { op: 'insert', parent: 'actions', nodes: [{ className: 'Action', props: { origin: 'score' }, children: [
+                { className: 'ActionCondition', props: { Condition: "#name = 'score' && #ComponentName = 'score' && #ComponentType = 'Button'" } },
+                { className: 'ActionUpdate', props: { stateName: '$Score', newValue: 'increment(1)' } },
+                { className: 'ActionUpdate', props: { stateName: '$Score', newValue: 'increment(4)' } },
+            ] }] },
     ]);
     const checks=f.exercise(s,[{steps:[{target:'score'},{target:'score'}],expect:{$Score:8}}]);
     const wildcard=f.documentSession(f.emptyNative());
-    wildcard.edit([{op:'insert',parent:'actions',node:{className:'Action',props:{origin:'*'},children:[{className:'ActionUpdate',props:{stateName:'$Score',newValue:'increment(2)'}}]}}]);
+    wildcard.edit([{ op: 'insert', parent: 'actions', nodes: [{ className: 'Action', props: { origin: '*' }, children: [{ className: 'ActionUpdate', props: { stateName: '$Score', newValue: 'increment(2)' } }] }] }]);
     const startup=f.exercise(wildcard,[{steps:[],expect:{$Score:2}}]);
     f.installNative(wildcard.snapshot());
     const nativeStartup=f.Globals.state.get('$Score');
@@ -102,7 +115,7 @@ test('native tabs and Radio activate in Preview and preserve notes and voice',as
         ]},
         {className:'TabPanel',ref:'scorePanel',props:{name:'scorePanel',label:'Score'},children:[{className:'Display',props:{stateName:'$Score'}}]},
       ]},
-    ]},{op:'insert',parent:'content',rows:[{label:'Bread',category:'food'},{label:'Water',category:'drink'}]},
+    ]},{ op: "rows", rows: [{ label: 'Bread', category: 'food' }, { label: 'Water', category: 'drink' }] },
     {op:'bind',target:'init',rules:[{updates:{$Score:'7'}}]},
     {op:'bind',target:'words',rules:[{updates:{$ImportedVoice:'#label'}}]}]);
     const review=f.reviewNativePresentation(s);
@@ -139,7 +152,7 @@ test('surface checks reject empty, hidden and filtered-away output without repla
     const hiddenDisplay=review([{className:'Display',props:{scale:0}}]);
     const hiddenTab=review([{className:'TabControl',props:{tabEdge:'none'},children:[{className:'TabPanel',props:{name:'empty'}},{className:'TabPanel',props:{name:'hidden'},children:[{className:'Display'}]}]}]);
     const filtered=f.documentSession(f.emptyNative());
-    filtered.edit([{op:'insert',parent:'page',node:{className:'Grid',children:[{className:'GridFilter',props:{operator:'only first',value:'0'}}]}},{op:'insert',parent:'content',labels:['Hidden']}]);
+    filtered.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Grid', children: [{ className: 'GridFilter', props: { operator: 'only first', value: '0' } }] }] },{ op: "rows", rows: Array.from(['Hidden'], label => ({ label })) }]);
     const imported=f.emptyNative();
     imported.actions.children.push(f.node('Action',{origin:'init'},[f.node('ActionUpdate',{stateName:'$External',newValue:'open_editor()'})]));
     return {emptyRadio,hiddenDisplay,hiddenTab,filtered:f.reviewNativePresentation(filtered),imported:f.reviewNativePresentation(f.documentSession(imported),{requireVisible:false}),functions:f.nativeExpressionReference()};
@@ -158,7 +171,7 @@ test('native overlay status pieces are recognized where the layout renders them'
     const f=fixture,s=f.documentSession(f.emptyNative());
     s.edit([
       {op:'update',target:'page',props:{columns:1}},
-      {op:'insert',parent:'page',node:{className:'Indicator'}},
+      { op: 'insert', parent: 'page', nodes: [{ className: 'Indicator' }] },
       {op:'bind',target:'init',rules:[{updates:{$asr_status:"'on'",$locationTracking:'1',$socketStatus:"'connected'"}}]},
     ]);
     const review=f.reviewNativePresentation(s);
@@ -207,7 +220,7 @@ test('real native expression metadata rejects numeric initialization before acce
   const result=await page.evaluate(()=>{
     const f=fixture,s=f.documentSession(f.emptyNative()),before=f.fingerprint(s.snapshot());
     let error;
-    try{s.edit([{op:'insert',parent:'page',node:{className:'Display',props:{stateName:'$Score'}}},{op:'bind',target:'init',rules:[{updates:{$Score:0}}]}]);}
+    try{s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Display', props: { stateName: '$Score' } }] },{op:'bind',target:'init',rules:[{updates:{$Score:0}}]}]);}
     catch(e){error=e.message;}
     return {error,before,after:f.fingerprint(s.snapshot()),changes:s.changes};
   });

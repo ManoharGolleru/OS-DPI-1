@@ -3,10 +3,28 @@ import {fileSaveLegacy as downloadFile} from "browser-fs-access";
 import Globals from "app/globals";
 import db, {DB, unPackDesign} from "app/db";
 import {SECTIONS,walk} from "./authoring-document";
-import {captureNative,emptyNative,documentSession,fingerprint,acceptNative,hasNativeLayoutPieces} from "./authoring-native";
+import {captureNative,emptyNative,documentSession,fingerprint,acceptNative,hasNativeLayoutPieces,nativeCatalog} from "./authoring-native";
 import {authorInterface,MODELS} from "./authoring-agent";
 import {createDiagnostics,diagnosticFingerprint} from "./authoring-diagnostics";
 import "css/authoring.css";
+
+/** Voice selection belongs to the user, including distinct speech/cue voices. */
+export function preserveNativeVoices(original,draft,request="") {
+  const changeVoice=request.split(/[.!?;,\n]|\b(?:and|but)\b/i).some(part=>
+    !/\b(?:keep|preserve|retain|unchanged|same|never)\b|\bdo not\b|\bdon['’]t\b/i.test(part) &&
+    (/\b(?:change|replace|set|switch)\s+(?:(?:the|my|our|its|current|existing|speech|cue)\s+)*(?:voice|accent|speaker)\b(?!\s+(?:rate|speed|pitch|volume)\b)/i.test(part) ||
+      /\b(?:choose|select|use|switch to)\b[^.!?;,\n]{0,40}\b(?:voice|accent|speaker)\b/i.test(part) && !/\b(?:rate|speed|pitch|volume)\b/i.test(part)));
+  if(changeVoice)return;
+  const schema=nativeCatalog();
+  const nodes=design=>[...walk(design.layout).filter(n=>n.className==="Speech"),...walk(design.cues).filter(n=>schema[n.className]?.props.voiceURI)];
+  const existing=nodes(original),speeches=existing.filter(n=>n.className==="Speech");
+  const chosen=speeches.find(n=>n.props.voiceURI)?.props.voiceURI || "";
+  for(const n of nodes(draft)) {
+    const previous=existing.find(old=>(n.id&&n.id===old.id)||(n.props.Key&&n.props.Key===old.props.Key)) ||
+      (n.className==="Speech"?speeches.find(old=>(old.props.stateName || "$Speak")===(n.props.stateName || "$Speak")):null);
+    n.props.voiceURI=previous ? previous.props.voiceURI || "" : n.className==="Speech" ? chosen : "";
+  }
+}
 
 /** The assistant lives in the existing designer. Native manual editing stays available. */
 export class AuthoringPanel {
@@ -23,6 +41,7 @@ export class AuthoringPanel {
   workspaceName="";
   originalName="";
   pending=null;
+  pendingImport=null;
   abort=null;
   usage=null;
   audit=[];
@@ -34,28 +53,26 @@ export class AuthoringPanel {
   async run() {
     if(this.busy)return;
     if(!this.description.trim()){this.error="Describe the interface or the change you need.";this.update();return;}
-    const original=captureNative(),name=db.designName, version=fingerprint(original);
-    const selected=this.mode==="edit"?Globals.layout.selected?.id || null:null;
-    this.diagnostics=this.diagnosticsEnabled?createDiagnostics({model:this.model,mode:this.mode,selected,request:this.description,includeBoardText:this.diagnosticBoardText}):null;
+    const original=captureNative(),name=db.designName, version=fingerprint(original),mode=this.mode,request=this.description.trim();
+    const selected=mode==="edit"?Globals.layout.selected?.id || null:null;
+    this.diagnostics=this.diagnosticsEnabled?createDiagnostics({model:this.model,mode,selected,request,includeBoardText:this.diagnosticBoardText}):null;
     const diagnostic=this.diagnostics;
     diagnostic?.record({stage:"transaction",before:diagnosticFingerprint(version)});
-    this.open=true;this.busy=true;this.error="";this.pending=null;this.usage=null;this.audit=[];
+    this.open=true;this.busy=true;this.error="";this.pending=null;this.pendingImport=null;this.usage=null;this.audit=[];
     const controller=this.abort=new AbortController();
     let timedOut=false;
     const timeout=setTimeout(()=>{timedOut=true;controller.abort();},480000);
     this.update();
     try {
-      const session=documentSession(this.mode==="new"?emptyNative():original,await db.listMedia());
-      const result=await authorInterface({session,request:this.description.trim(),selected,model:this.model,requireVisible:this.mode==="new" || !hasNativeLayoutPieces(original),signal:controller.signal,history:this.summaries,
+      const session=documentSession(mode==="new"?emptyNative():original,await db.listMedia());
+      const result=await authorInterface({session,request,selected,model:this.model,requireVisible:mode==="new" || !hasNativeLayoutPieces(original),signal:controller.signal,history:mode==="new"?[]:this.summaries,
         onProgress:message=>{this.status=message;this.update();},onDiagnostic:event=>diagnostic?.record(event)});
       if(controller.signal.aborted)throw new DOMException("Cancelled","AbortError");
       this.usage=result.usage;this.audit=result.audit;
       if(result.question){this.status=result.question;diagnostic?.finish("needs-input");return;}
       if(db.designName!==name || fingerprint(captureNative())!==version)throw new Error("You changed the board while Groq was working. Your manual changes were kept; run the request against this updated board.");
-      // Voice selection is a device/account choice, not a design task.
-      const voice=walk(original.layout).find(n=>n.className==="Speech")?.props.voiceURI;
-      if(voice)for(const n of walk(result.design.layout))if(n.className==="Speech"&&!n.props.voiceURI)n.props.voiceURI=voice;
-      const proposal={...result,name,version,request:this.description.trim()};
+      preserveNativeVoices(original,result.design,request);
+      const proposal={...result,name,version,mode,request};
       if(result.checked.effects.length){
         this.pending=proposal;
         this.status="Review the external connections or device effects below before applying this design.";
@@ -70,14 +87,14 @@ export class AuthoringPanel {
   }
   async apply(proposal) {
     if(db.designName!==proposal.name || fingerprint(captureNative())!==proposal.version)throw new Error("This proposal is out of date. Your newer manual changes were kept.");
-    const first=this.workspaceName!==db.designName;
-    if(first)this.originalName=db.designName;
+    const first=proposal.mode==="new" || this.workspaceName!==db.designName;
     const result=await acceptNative(proposal.design,{sourceName:db.designName,newCopy:first,title:proposal.title});
     this.diagnostics?.record({stage:"transaction",after:diagnosticFingerprint(fingerprint(result.after)),persisted:true,rendered:true,copied:first,controls:proposal.presentation?.controls || 0});
     this.diagnostics?.finish("applied");
+    if(first){this.originalName=proposal.name;this.history=[];this.top=0;this.summaries=[];}
     this.workspaceName=result.name;
     this.history.splice(this.top);
-    this.history.push({before:result.before,after:result.after,summary:proposal.summary});
+    this.history.push({before:proposal.mode==="new"?emptyNative():result.before,after:result.after,summary:proposal.summary});
     if(this.history.length>12)this.history.shift();
     this.top=this.history.length;
     this.summaries.push({request:proposal.request,changes:proposal.summary});
@@ -103,25 +120,46 @@ export class AuthoringPanel {
     this.busy=true;this.update();
     const target=redo?entry.after:entry.before;
     try{
-      await acceptNative(target,{newCopy:false,sourceName:db.designName});
+      const result=await acceptNative(target,{newCopy:false,sourceName:db.designName});
+      // Native installation expands defaults (notably a new blank baseline).
+      // Compare subsequent history moves with the actual installed document.
+      if(redo)entry.after=result.after;else entry.before=result.after;
       this.top+=redo?1:-1;this.error="";this.status=redo?"Redid the AI changes.":"Undid the AI changes.";
     }catch(e){this.error=e.message;}finally{this.busy=false;this.update();}
   }
   async importFile(file) {
     if(!file||this.busy)return;
-    this.busy=true;this.error="";this.update();
+    this.busy=true;this.error="";this.status="";this.pending=null;this.pendingImport=null;this.update();
     try{
       const archive=await unPackDesign(file);
       if(SECTIONS.some(s=>!(s in archive)))throw new Error("Import a complete .osdpi design containing Layout, Content, Actions, Methods, Patterns, and Cues.");
       const design=Object.fromEntries(SECTIONS.map(s=>[s,archive[s]]));
       const inspected=documentSession(design,(archive.media || []).map(r=>r.name)).diagnose();
       if(inspected.errors.some(e=>/Unregistered|Missing native/.test(e.message)))throw new Error("This file uses components that are not installed in this OS-DPI version. The original file was not changed.");
-      if(inspected.effects.length && !window.confirm("This design includes external connections or device effects:\n"+inspected.effects.map(e=>e.message).join("\n")+"\nImport only if you trust the file. Continue?"))return;
-      const storage=new DB();
-      await storage.readDesignFromBlob(file,file.name);
-      localStorage.setItem("osdpi-open-ai-generator","1");
-      window.location.hash=storage.designName;
+      if(inspected.effects.length){
+        this.pendingImport={file,effects:inspected.effects};
+        this.status="Review this file's external connections or device effects before importing.";
+      }else await this.finishImport(file);
     }catch(e){this.error=e.message || "Import failed.";}finally{this.busy=false;this.update();}
+  }
+  async finishImport(file) {
+    // Import always allocates a separate native design. Manual edits made while
+    // reviewing remain on their source board; finish their writes before leaving.
+    await db.settleWrites();
+    const storage=new DB();
+    await storage.readDesignFromBlob(file,file.name);
+    await db.settleWrites();
+    this.pendingImport=null;
+    this.status="Imported as a separate design.";
+    localStorage.setItem("osdpi-open-ai-generator","1");
+    window.location.hash=storage.designName;
+  }
+  async confirmImport() {
+    if(!this.pendingImport||this.busy)return;
+    this.busy=true;this.error="";this.update();
+    try{await this.finishImport(this.pendingImport.file);}
+    catch(e){this.error=e.message || "Import failed.";}
+    finally{this.busy=false;this.update();}
   }
   async downloadBoard() {
     if(this.busy)return;
@@ -158,7 +196,7 @@ export class AuthoringPanel {
         </label>
         <div class="ai-author-actions">
           <button type="button" class="ai-generate-btn" data-testid="author-run" ?disabled=${this.busy} @click=${()=>this.run()}>${this.busy?"Working…":"Build / change interface"}</button>
-          ${this.busy?html`<button type="button" data-testid="author-cancel" @click=${()=>this.abort?.abort()}>Stop</button>`:html``}
+          ${this.busy&&this.abort?html`<button type="button" data-testid="author-cancel" @click=${()=>this.abort.abort()}>Stop</button>`:html``}
           <button type="button" data-testid="author-preview" ?disabled=${this.busy} @click=${()=>Globals.state.update({editing:false})}>Preview</button>
           <button type="button" data-testid="author-download" ?disabled=${this.busy} @click=${()=>this.downloadBoard()}>Download .osdpi</button>
         </div>
@@ -170,6 +208,13 @@ export class AuthoringPanel {
           ${this.pending.checked.effects.map(e=>html`<p>${e.message}</p>`)}
           <button type="button" ?disabled=${this.busy} @click=${()=>this.confirm()}>Allow these effects and apply</button>
           <button type="button" ?disabled=${this.busy} @click=${()=>{this.pending=null;this.status="Proposal discarded. Your board is unchanged.";this.update();}}>Discard</button>
+        </section>`:html``}
+        ${this.pendingImport?html`<section class="ai-review" data-testid="author-import-review"><h3>Review before importing</h3>
+          <p>${this.pendingImport.file.name}</p>
+          ${this.pendingImport.effects.map(e=>html`<p>${e.message}</p>`)}
+          <p>Import only if you trust this file. It will open as a separate design.</p>
+          <button type="button" data-testid="author-import-confirm" ?disabled=${this.busy} @click=${()=>this.confirmImport()}>Import this design</button>
+          <button type="button" data-testid="author-import-cancel" ?disabled=${this.busy} @click=${()=>{this.pendingImport=null;this.status="Import cancelled. Your board is unchanged.";this.update();}}>Cancel import</button>
         </section>`:html``}
         ${this.history.length?html`<div class="ai-author-actions">
           <button type="button" data-testid="author-undo" ?disabled=${this.busy||!this.top} @click=${()=>this.undo()}>Undo AI changes</button>

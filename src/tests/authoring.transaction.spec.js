@@ -8,7 +8,7 @@ test.beforeEach(async({page})=>{
 test('a manual edit during unique-name allocation is preserved and rejects the stale copy',async({page})=>{
   const result=await page.evaluate(async()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Draft'}}}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Draft' } }] }]);
     f.db.uniqueName=async()=>{await Promise.resolve();f.Globals.layout.uiScale.set(3.2);return 'stale-copy';};
     let error;try{await f.acceptNative(s.snapshot());}catch(e){error=e.message;}
     const database=await f.db.dbPromise;
@@ -21,7 +21,7 @@ test('a manual edit during unique-name allocation is preserved and rejects the s
 test('commit blocks native pointer and keyboard edits while copying, then restores focus and input',async({page})=>{
   await page.evaluate(async()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Draft'}}}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Draft' } }] }]);
     const database=await f.db.dbPromise;
     let release;const gate=new Promise(resolve=>release=resolve);
     window.releaseCommit=release;window.editEvents=0;
@@ -69,7 +69,7 @@ test('native init Notes writes only the working copy after resources have been c
     f.Globals.data.setNoteRows(notes);await f.db.write('notes',notes);
     await f.db.addMedia(new Blob(['resource']),'keep.txt');
     const s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Display',props:{stateName:'$NoteID'}}},
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Display', props: { stateName: '$NoteID' } }] },
       {op:'bind',target:'init',rules:[{updates:{$NoteID:"Notes('#label', 'Draft note')"}}]}]);
     const result=await f.acceptNative(s.snapshot(),{title:'Notes copy'}),database=await f.db.dbPromise;
     return {source:(await database.get('store5',['original','notes'])).data,target:(await database.get('store5',[result.name,'notes'])).data,live:f.Globals.data.noteRows,resource:!!await database.get('media',[result.name,'keep.txt'])};
@@ -89,7 +89,7 @@ for(const newCopy of [true,false])test(`failed native install restores ${newCopy
     const before=f.fingerprint(f.captureNative()),records=await database.getAllFromIndex('store5','by-name','original');
     f.db.uniqueName=async()=> 'failed-copy';
     const s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Draft'}}},{op:'bind',target:'init',rules:[{updates:{$NoteID:"Notes('#label', 'Must roll back')"}}]}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Draft' } }] },{op:'bind',target:'init',rules:[{updates:{$NoteID:"Notes('#label', 'Must roll back')"}}]}]);
     const fromObject=f.TreeBase.fromObject;
     f.TreeBase.fromObject=function(...args){const root=fromObject.apply(this,args);if(args[0].className==='MethodChooser')root.configure=()=>{throw new Error('Synthetic activation failure');};return root;};
     let error;
@@ -109,7 +109,7 @@ test('a failed storage transaction never installs the draft or runs its init eff
   const result=await page.evaluate(async()=>{
     const f=fixture,database=await f.db.dbPromise,before=f.fingerprint(f.captureNative());
     const s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Draft'}}},{op:'bind',target:'init',rules:[{updates:{$NoteID:"Notes('#label', 'Must not run')"}}]}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Draft' } }] },{op:'bind',target:'init',rules:[{updates:{$NoteID:"Notes('#label', 'Must not run')"}}]}]);
     f.db.dbPromise=Promise.resolve(new Proxy(database,{get(target,key){
       if(key==='transaction')return (stores,mode,...args)=>{if(mode==='readwrite'&&Array.isArray(stores)&&stores.includes('media'))throw new Error('Synthetic storage failure');return target.transaction(stores,mode,...args);};
       const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
@@ -124,7 +124,7 @@ test('a failed storage transaction never installs the draft or runs its init eff
 test('commit restores an already inert body without enabling it',async({page})=>{
   const result=await page.evaluate(async()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Display'}}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Display' }] }]);
     document.body.setAttribute('inert','original-lock');
     await f.acceptNative(s.snapshot());
     return document.body.getAttribute('inert');
@@ -135,12 +135,12 @@ test('commit restores an already inert body without enabling it',async({page})=>
 test('failed init persistence restores live state without replaying the original init action',async({page})=>{
   const result=await page.evaluate(async()=>{
     const f=fixture,database=await f.db.dbPromise,source=f.documentSession(f.emptyNative());
-    source.edit([{op:'insert',parent:'page',node:{className:'Display'}},{op:'bind',target:'init',rules:[{updates:{$SourceNote:"Notes('#label', 'Original startup')"}}]}]);
+    source.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Display' }] },{op:'bind',target:'init',rules:[{updates:{$SourceNote:"Notes('#label', 'Original startup')"}}]}]);
     f.installNative(source.snapshot());await f.db.settleWrites();
     await f.persistNative(f.captureNative(),{name:'original'});
     const before=f.fingerprint(f.captureNative()),notes=structuredClone(f.Globals.data.noteRows),states=structuredClone(f.Globals.state.values),records=await database.getAllFromIndex('store5','by-name','original');
     const draft=f.documentSession(f.captureNative());
-    draft.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Draft'}}},{op:'bind',target:'init',mode:'replace',rules:[{updates:{$NewNote:"Notes('#label', 'Failed startup')"}}]}]);
+    draft.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Draft' } }] },{op:'bind',target:'init',mode:'replace',rules:[{updates:{$NewNote:"Notes('#label', 'Failed startup')"}}]}]);
     f.db.uniqueName=async()=> 'failed-notes';
     f.db.dbPromise=Promise.resolve(new Proxy(database,{get(target,key){
       if(key==='transaction')return (stores,mode,...args)=>{if(mode==='readwrite'&&Array.isArray(stores)&&stores.length===2&&stores.includes('store5')&&stores.includes('saved'))throw new Error('Synthetic Notes write failure');return target.transaction(stores,mode,...args);};
@@ -164,7 +164,7 @@ test('a storage rollback failure still restores editor identity, state, metadata
     f.db.fileName='original-custom.osdpi';f.db.hasUnsavedChanges=false;
     const before=f.fingerprint(f.captureNative()),states=structuredClone(f.Globals.state.values),notes=structuredClone(f.Globals.data.noteRows),records=await database.getAllFromIndex('store5','by-name','original');
     const draft=f.documentSession(f.emptyNative());
-    draft.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Failed draft'}}},{op:'bind',target:'init',rules:[{updates:{$NewNote:"Notes('#label', 'Must not remain live')"}}]}]);
+    draft.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Failed draft' } }] },{op:'bind',target:'init',rules:[{updates:{$NewNote:"Notes('#label', 'Must not remain live')"}}]}]);
     f.db.uniqueName=async()=> 'failed-recovery';
     let storageTransactions=0;
     f.db.dbPromise=Promise.resolve(new Proxy(database,{get(target,key){
@@ -190,7 +190,7 @@ test('a storage rollback failure still restores editor identity, state, metadata
 for(const redo of [false,true])test(`${redo?'redo':'undo'} drains pending native writes and blocks manual edits throughout its commit`,async({page})=>{
   await page.evaluate(async redo=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Working draft'}}}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Working draft' } }] }]);
     const applied=await f.acceptNative(s.snapshot(),{title:'Undo workspace'});
     f.panel.workspaceName=applied.name;f.panel.history=[{before:applied.before,after:applied.after,summary:'Test edit'}];f.panel.top=1;
     if(redo)await f.panel.undo();
@@ -222,7 +222,7 @@ for(const redo of [false,true])test(`${redo?'redo':'undo'} drains pending native
 test('failed undo storage keeps the working draft and its history position intact',async({page})=>{
   const result=await page.evaluate(async()=>{
     const f=fixture,s=f.documentSession(f.emptyNative());
-    s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{label:'Keep working draft'}}}]);
+    s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { label: 'Keep working draft' } }] }]);
     const applied=await f.acceptNative(s.snapshot(),{title:'Undo failure workspace'});
     f.panel.workspaceName=applied.name;f.panel.history=[{before:applied.before,after:applied.after,summary:'Test edit'}];f.panel.top=1;
     const database=await f.db.dbPromise,before=f.fingerprint(f.captureNative()),records=await database.getAllFromIndex('store5','by-name',applied.name);

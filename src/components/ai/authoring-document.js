@@ -9,6 +9,7 @@ const object = x => x && typeof x === "object" && !Array.isArray(x);
 const enabled = x => x === true || x === "true";
 const forbidden = new Set(["__proto__", "prototype", "constructor"]);
 const eventOrigins = new Set(["init", "*", "okSlot"]);
+const operationKeys=new Map(Object.entries({insert:["parent","index","nodes"],rows:["index","rows","defaults"],update:["target","props","unset"],move:["target","parent","index"],remove:["target"],bind:["target","mode","rules"]}).map(([op,keys])=>[op,new Set(["op",...keys])]));
 // These native controls actually dispatch Actions. Tabs and Radio activate
 // their own handlers instead; a name alone does not make an action origin.
 const actionNameFields = new Map([["Button","name"],["Grid","name"],["VSD","name"],["Display","Name"],["Method","Name"]]);
@@ -97,7 +98,7 @@ export class AuthoringDocument {
       assert(!this.refs.has(item._ref), `Duplicate editing reference: ${item._ref}`);
       this.refs.set(item._ref,item);
       this.parents.set(item._ref,{parent,section});
-      for (const child of item.children || []) visit(child,item,section,depth+1);
+      if(section!=="content")for (const child of item.children || []) visit(child,item,section,depth+1);
     };
     for (const name of SECTIONS) {
       if (name === "content") for (const row of this.design.content || []) visit(row,null,name);
@@ -135,6 +136,8 @@ export class AuthoringDocument {
   prepare(spec) {
     assert(object(spec) && this.catalog[spec.className], `Unknown native component: ${spec?.className}. Inspect the catalog.`);
     assert(!Object.keys(spec).some(k=>!["className","props","children","ref"].includes(k)), "A component accepts className, props, children, and optional ref only.");
+    assert(spec.props===undefined || object(spec.props),"Native properties belong in a props object; do not JSON-encode it as a string.");
+    assert(spec.children===undefined || Array.isArray(spec.children),"Native children must be an array of component nodes.");
     const result=node(spec.className, this.resolve(spec.props || {}));
     const fields=this.catalog[spec.className].props;
     if(fields.Key && !result.props.Key) result.props.Key=this.unique("key_"+ (++this.sequence));
@@ -160,33 +163,41 @@ export class AuthoringDocument {
     assert(Array.isArray(operations) && operations.length && operations.length<=80,"Provide between 1 and 80 edits in a batch.");
     const previous=clone(this.design), seq=this.sequence;
     const before=this.diagnose().errors,removedRules=new Set();
+    let operationIndex=-1;
     try {
-      for(const op of operations) {
+      for(const [index,op] of operations.entries()) {
+        operationIndex=index;
         assert(object(op) && typeof op.op==="string", "Each edit needs an op.");
+        const allowed=operationKeys.get(op.op);
+        assert(allowed,`Unknown edit '${op.op}'. Use insert, rows, update, move, remove or bind.`);
+        const extra=Object.keys(op).filter(key=>!allowed.has(key));
+        assert(!extra.length,`${op.op} does not accept ${extra.join(", ")}. Allowed fields: ${[...allowed].join(", ")}. Native components use insert with nodes; vocabulary/data records use rows.`);
         if(op.op==="insert") {
-          if(op.parent === "content") {
-            const rows=op.rows || (typeof op.characters==="string" ? [...op.characters].map(label=>({label})) : (op.labels || []).map(label=>({label})));
-            assert(Array.isArray(rows) && rows.length && rows.length<=1000,"Content insert needs rows, labels, or characters.");
-            const inserted=rows.map(row=>({...this.resolve(op.defaults || {}),...this.resolve(row),_ref:`n${++this.sequence}`}));
-            this.design.content.splice(this.index(op.index,this.design.content.length),0,...inserted);
-          } else {
+            assert(op.parent!=="content","insert creates native components under page or another native container. Use {op:'rows',rows:[{label:'Bread'}]} for vocabulary/data records.");
             const parent=this.find(op.parent);
             assert(parent.children,"The insertion parent is not a native container.");
-            const specs=op.nodes || (op.node ? [op.node] : []);
-            assert(specs.length>0,'Layout insert needs node or nodes, e.g. {op:"insert",parent:"page",nodes:[{className:"Button",ref:"choice",props:{label:"Choose"}}]}. rows/labels/characters are only for parent:"content".');
+            const specs=op.nodes;
+            assert(Array.isArray(specs)&&specs.length>0,'insert needs nodes, e.g. {op:"insert",parent:"page",nodes:[{className:"Button",ref:"choice",props:{label:"Choose"}}]}.');
             const created=specs.map(spec=>this.prepare(spec));
             parent.children.splice(this.index(op.index,parent.children.length),0,...created);
-          }
+        } else if(op.op==="rows") {
+            assert(Array.isArray(op.rows)&&op.rows.length&&op.rows.length<=1000,"rows needs 1–1000 vocabulary/data records, e.g. [{label:'Bread',grid:'food'}]. It does not create interface components or initialize states.");
+            assert(op.defaults===undefined || object(op.defaults),"Data defaults must be an object of shared field values.");
+            const inserted=op.rows.map(row=>{
+              assert(object(row),"Each data row must be an object of scalar fields.");
+              return {...this.resolve(op.defaults || {}),...this.resolve(row),_ref:`n${++this.sequence}`};
+            });
+            this.design.content.splice(this.index(op.index,this.design.content.length),0,...inserted);
         } else if(op.op==="update") {
-          const target=this.find(op.target), props=target.props || target;
-          const changes=this.resolve(op.props || op.fields || {});
+          const target=this.find(op.target),isRow=this.parents.get(target._ref)?.section==="content", props=isRow?target:target.props;
+          const changes=this.resolve(op.props || {});
           assert(object(changes),"Update properties must be an object.");
           for(const [key,value] of Object.entries(changes)) {
-            assert(!["_ref","id","className","children"].includes(key) && !forbidden.has(key),"Update cannot replace structure or editing identifiers.");
+            assert(!(isRow?["_ref"]:["_ref","id","className","children"]).includes(key) && !forbidden.has(key),"Update cannot replace structure or editing identifiers.");
             props[key]=value;
           }
           for(const key of op.unset || []) {
-            assert(!["_ref","id","className","children"].includes(key),"Cannot remove an editing identifier.");
+            assert(!(isRow?["_ref"]:["_ref","id","className","children"]).includes(key),"Cannot remove an editing identifier.");
             delete props[key];
           }
         } else if(op.op==="move" || op.op==="remove") {
@@ -261,10 +272,11 @@ export class AuthoringDocument {
               actions.splice(index,0,rule);
             }
           }
-        } else throw new Error(`Unknown edit '${op.op}'. Use insert, update, move, remove, or bind.`);
+        }
         this.refresh();
         assert(this.refs.size<6000,"The working document exceeds the 6,000-object safety limit.");
       }
+      operationIndex=-1;
       if(removedRules.size) {
         const surviving=new Set([...walk(this.design.layout),...(this.design.method?.children || [])].map(actionOrigin).filter(Boolean));
         this.design.actions.children=this.design.actions.children.filter(action=>!removedRules.has(action)||surviving.has(action.props.origin));
@@ -275,7 +287,8 @@ export class AuthoringDocument {
       this.changes.push(...operations.map(x=>`${x.op} ${x.target || x.parent || ""}`));
       return {ok:true, outline:this.outline(), pending:this.check().errors};
     } catch(error) {
-      this.design=previous;this.sequence=seq;this.refresh();throw error;
+      this.design=previous;this.sequence=seq;this.refresh();
+      throw new Error(`${operationIndex>=0?`operations[${operationIndex}] ${operations[operationIndex]?.op}: `:"Batch validation: "}${error.message} Nothing in this batch was applied.`);
     }
   }
   index(value,length) {
@@ -286,7 +299,7 @@ export class AuthoringDocument {
   snapshot(){return clean(this.design);}
   describe(item,depth=1) {
     if(Array.isArray(item))return item.map(n=>this.describe(n,depth));
-    if(!item.className)return {ref:item._ref,...clean(item)};
+    if(!item.className || this.parents.get(item._ref)?.section==="content")return {ref:item._ref,fields:clean(item)};
     const result={ref:item._ref,className:item.className,props:item.props};
     if(depth>0)result.children=item.children.map(n=>this.describe(n,depth-1));
     else result.children=item.children.map(n=>({ref:n._ref,className:n.className,name:n.props.name || n.props.Name || n.props.origin || "",...(n.props.Key?{key:n.props.Key}:{})}));
@@ -326,6 +339,7 @@ export class AuthoringDocument {
           if(p.min!==undefined && v<p.min || p.max!==undefined&&v>p.max)issue(n,key,`${key} is outside its native allowed range.`);
         } else if(p.type==="boolean" && ![true,false,"true","false"].includes(value)) issue(n,key,`${key} must be true or false.`);
         else if(p.choices?.length && value!=="" && !p.choices.includes(String(value)))issue(n,key,`Use a native ${key} option: ${p.choices.join(", ")}.`);
+        if(!formula && p.validate){const error=p.validate(value);if(error)issue(n,key,error);}
         if(["URL","url","Address"].includes(key) && value)effects.push({ref:n._ref,message:`External address: ${String(value).replace(/([?&](?:key|token|secret)=)[^&]*/gi,"$1[redacted]")}`});
         if(p.type==="css" && /(?:url\s*\(|@import|<\/style)/i.test(String(value)))effects.push({ref:n._ref,message:"Custom CSS contains an external resource or style boundary."});
       }

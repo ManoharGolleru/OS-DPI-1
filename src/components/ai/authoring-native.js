@@ -8,6 +8,7 @@ import {compileExpression, Functions,nativeFunctionNames,canEvaluateIsolated} fr
 import {postRender} from "app/render";
 import {TreeBase,componentDescriptions} from "../treebase";
 import * as Props from "../props";
+import {isValidColor} from "../style";
 import {blankLayout, blankActions, visualClasses} from "../pieces";
 import defaultMethods from "../access/method/defaultMethods";
 import defaultPatterns from "../access/pattern/defaultPatterns";
@@ -29,7 +30,8 @@ export function nativeCatalog() {
       props[key]={type,kind:p.constructor.name,default:p instanceof Props.UID?"":p._value ?? "",...(p instanceof Props.UID?{generated:true}:{}),
         ...(p instanceof Props.OneOfGroup?{exclusiveGroup:p.options.group}:{}),...(p.isFormulaByDefault?{expression:true}:{}),
         ...(choices.length?{choices}:{}),...(p.options.min!==undefined?{min:p.options.min}:{}),
-        ...(p.options.max!==undefined?{max:p.options.max}:{}),...(p.options.title?{about:p.options.title}:{})};
+        ...(p.options.max!==undefined?{max:p.options.max}:{}),...(p.options.title?{about:p.options.title}:{}),
+        ...(p instanceof Props.Color?{validate:value=>isValidColor(String(value))?null:"Invalid native color. Use a color name or CSS color without expression quotes; formulas start with =."}:{})};
     }
     const children=[...TreeBase.nameToClass].filter(([child,C])=>(instance.allowedChildren || []).some(p=>child===p || C.prototype instanceof (TreeBase.nameToClass.get(p) || class {}))).map(([n])=>n);
     result[name]={props,children,description:componentDescriptions[name] || name};
@@ -87,14 +89,16 @@ export function examples(topic="") {
     speech:"Speech watches stateName ($Speak by default). A Speak button binds {$Speak:'$Display'} with condition '$Display'. Clear binds {$Display:\"''\"}. Character insertion uses add_letter(#label), words use add_word(#label). Backspace uses replace_last_letter(''). Expression string literals must be quoted. Preserve voiceURI, never invent a voice ID.",
     media:"Use only uploaded media filenames. Grid rows use symbol for an image and label for its caption; a Button has symbol. Audio watches its stateName; an ActionUpdate sets that state to a quoted audio filename. Inspect Audio, VSD and their native schemas for other media layouts. Do not invent filenames or URLs.",
   };
-  return topic ? hints[topic] || {available:Object.keys(hints)} : hints;
+  if(!topic)return hints;
+  const matched=Object.entries(hints).filter(([key])=>new RegExp(`\\b${key}\\b`,"i").test(String(topic)));
+  return matched.length===1?matched[0][1]:matched.length?Object.fromEntries(matched):{available:Object.keys(hints)};
 }
 
 /** A native keyboard fragment reuses the existing action helper and evaluator.
  * This saves 26 repetitive model outputs, without restricting generic edits.
  */
-export function keyboardRecipe(session,{parent="page",backspace=false,letters=["qwertyuiop","asdfghjkl","zxcvbnm"],color="#dbeafe",displayPosition="top"}={}) {
-  if(!Array.isArray(letters)||!letters.length||letters.length>12 || letters.some(s=>typeof s!=="string"||!s.length||[...s].length>40))throw new Error("Keyboard rows must be nonempty character strings.");
+export function keyboardRecipe(session,{parent="page",backspace=false,keyRows=["qwertyuiop","asdfghjkl","zxcvbnm"],color="#dbeafe",displayPosition="top"}={}) {
+  if(!Array.isArray(keyRows)||!keyRows.length||keyRows.length>12 || keyRows.some(s=>typeof s!=="string"||!s.length||[...s].length>40))throw new Error('keyRows must contain whole row strings, e.g. ["qwertyuiop","asdfghjkl","zxcvbnm"], not individual letters. Omit keyRows for standard QWERTY.');
   const destination=session.find(parent);
   if(!session.catalog[destination.className].children.includes("Stack"))throw new Error("Choose a layout container for the keyboard.");
   const prefix=session.unique("typing");
@@ -109,22 +113,22 @@ export function keyboardRecipe(session,{parent="page",backspace=false,letters=["
     make("Button",{name:ref("space"),label:"Space"},[],"space"),
     ...(backspace?[make("Button",{name:ref("backspace"),label:"Backspace"},[],"backspace")]:[]),
   ],"controls");
-  const grids=letters.map((line,i)=>make("Grid",{name:ref("keys"+i),rows:1,columns:[...line].length,scale:1,fillItems:true,buttonColor:color},[
+  const grids=keyRows.map((line,i)=>make("Grid",{name:ref("keys"+i),rows:1,columns:[...line].length,scale:1,fillItems:true,buttonColor:color},[
     make("GridFilter",{field:"#grid",operator:"equals",value:"'"+ref("keys"+i)+"'"})
   ],"keys"+i));
   const keyArea=make("Stack",{direction:"column",scale:4},grids,"keys");
   const insert={op:"insert",parent,nodes:[make("Stack",{direction:"column",scale:6},displayPosition==="bottom"?[keyArea,controls]:[controls,keyArea],"keyboard")]};
   const ops=[insert];
-  if(!walk(session.design.layout).some(n=>n.className==="Speech"))ops.unshift({op:"insert",parent:"page",node:make("Speech",{stateName:"$Speak",voiceURI:""},[],"voice")});
-  letters.forEach((line,i)=>{
-    ops.push({op:"insert",parent:"content",characters:line,defaults:{grid:ref("keys"+i)}});
+  if(!walk(session.design.layout).some(n=>n.className==="Speech"))ops.unshift({ op: "insert", parent: "page", nodes: [make("Speech", { stateName: "$Speak", voiceURI: "" }, [], "voice")] });
+  keyRows.forEach((line,i)=>{
+    ops.push({ op: "rows", rows: Array.from(line, label => ({ label })), defaults: { grid: ref("keys" + i) } });
     ops.push({op:"bind",target:ref("keys"+i),rules:[{updates:{$Display:"add_letter(#label)"}}]});
   });
   const bindings={speak:{[speechState]:"$Display"},clear:{$Display:"''"},space:{$Display:"add_letter(' ')"},...(backspace?{backspace:{$Display:"replace_last_letter('')"}}:{})};
   for(const [target,updates] of Object.entries(bindings))ops.push({op:"bind",target:ref(target),rules:[{condition:target==="speak"?"$Display":"",updates}]});
   const result=session.edit(ops);
-  const letter=c=>({target:ref("keys"+letters.findIndex(row=>row.includes(c))),label:c});
-  if(letters.join("")==="qwertyuiopasdfghjklzxcvbnm") {
+  const letter=c=>({target:ref("keys"+keyRows.findIndex(row=>row.includes(c))),label:c});
+  if(keyRows.join("")==="qwertyuiopasdfghjklzxcvbnm") {
     session.nativeTests=[...(session.nativeTests||[]),
       {name:"Keyboard composition",initial:{[speechState]:""},steps:[{target:ref("clear")},...[..."hello world"].map(c=>c===" "?{target:ref("space")}:letter(c))],expect:{$Display:"hello world",[speechState]:""}},
       {name:"Keyboard speak",steps:[{target:ref("clear")},letter("h"),letter("i"),{target:ref("speak")}],expect:{[speechState]:"hi"}},
@@ -285,7 +289,7 @@ export function exercise(session,tests=[]) {
         const n=session.find(step.target),origin=n.props.name || n.props.Name;
         if(["TabControl","TabPanel","Radio","Option"].includes(n.className))throw new Error(`${n.className} activates directly in the native interface. Verify its navigation/selection in Preview; local checks only exercise action rules.`);
         if(!origin)throw new Error(`${n.className} has no named action origin. Verify this component in Preview.`);
-        let data={...(["Button","Grid","Display"].includes(n.className)?{ComponentName:origin,ComponentType:n.className}:{}),...(step.data || {})};
+        let data={...(["Button","Grid","VSD","Display"].includes(n.className)?{ComponentName:origin,ComponentType:n.className}:{}),...(step.data || {})};
         if(n.className==="Button") {
           const label=nativeValue(session,n,"label",state.values);
           if(step.label!==undefined&&step.label!==label)throw new Error(`Button '${origin}' has label '${label}', not '${step.label}'.`);
@@ -301,7 +305,10 @@ export function exercise(session,tests=[]) {
         if(["Button","Grid","VSD","Display"].includes(n.className))data=Object.fromEntries(Object.entries(data).filter(([,value])=>value!=null).map(([key,value])=>[key,String(value)]));
         press(origin,data);
       }
-      for(const [key,want] of Object.entries(test.expect || {}))if(state.get(key)!==want)throw new Error(`${key}: expected ${JSON.stringify(want)}, got ${JSON.stringify(state.get(key))}.`);
+      for(const [key,want] of Object.entries(test.expect || {})) {
+        const actual=state.get(key) ?? "";
+        if(actual!==want)throw new Error(`${key}: expected ${JSON.stringify(want)}, got ${JSON.stringify(actual)}.`);
+      }
       return {name:test.name || "Interaction",ok:true,states:state.values};
     }catch(e){return {name:test.name || "Interaction",ok:false,error:e.message};}
   });

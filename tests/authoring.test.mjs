@@ -2,10 +2,57 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {AuthoringDocument,walk,node,presentationReview} from '../src/components/ai/authoring-document.js';
+import {compactFeedback} from '../src/components/ai/authoring-context.js';
 const json=name=>JSON.parse(readFileSync(new URL(name,import.meta.url),'utf8'));
 const catalog=json('./native-catalog.json'), empty=json('./native-empty.json');
 const session=()=>new AuthoringDocument(empty,catalog);
-const insert=()=>({op:'insert',parent:'page',node:{className:'Button',ref:'choice',props:{name:'choice',label:'Choose'}}});
+const insert=()=>({ op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'choice', props: { name: 'choice', label: 'Choose' } }] });
+test('large staged-edit errors retain the actual corrections and native refs within the tool budget',()=>{
+ const feedback={ok:false,staged:true,instruction:'Edits are kept; correct the bindings, do not repeat inserts.',
+  errors:Array.from({length:30},(_,i)=>({ref:'action'+i,key:'action'+i+'.origin',message:'No matching named layout component. Bind the native component ref.'})),
+  pending:Array.from({length:30},()=>({message:'Duplicate detail'.repeat(100)})),
+  created:[{ref:'keys',className:'Grid',name:'keyboard'},...Array.from({length:90},(_,i)=>({ref:'update'+i,className:'ActionUpdate'}))]};
+ const result=compactFeedback(feedback);
+ assert.ok(JSON.stringify(result).length<=5000);
+ assert.equal(result.staged,true);assert.equal(result.ok,false);
+ assert.equal(result.created[0].ref,'keys');assert.equal(result.errors[0].ref,'action0');
+ assert.equal(result.moreErrors,26);assert.match(result.instruction,/do not repeat/);
+ assert.equal(result.error,undefined);
+});
+test('canonical operations reject ambiguous insert forms and ignored fields atomically',()=>{
+ for(const invalid of [
+  {op:'insert',parent:'content',rows:[{label:'Bread'}]},
+  {op:'insert',parent:'page',node:{className:'Button'}},
+  {op:'update',target:'page',rows:[{label:'Bread'}]},
+  {op:'update',target:'page',fields:{background:'red'}},
+  // Actual rejected Groq generations: let native validation give the precise
+  // correction rather than accepting these as aliases or ignoring the fields.
+  {op:'rows',parent:'page',rows:[{label:'Bread'}],defaults:{grid:'food'}},
+  {op:'rows',target:'foodGrid',rows:[{label:'Bread'}]},
+  {op:'bind',target:'init',bindings:[{stateName:'$Display',value:"''"}]},
+ ]){
+  const s=session(),before=s.snapshot();
+  assert.throws(()=>s.edit([insert(),invalid]),/operations\[1\].*Nothing in this batch was applied/);
+  assert.deepEqual(s.snapshot(),before);
+ }
+});
+test('native property objects and child arrays are checked before preparing nodes',()=>{
+ for(const spec of [{className:'Button',props:'{"label":"Bread"}'},{className:'Stack',children:{className:'Button'}}]){
+  const s=session(),before=s.snapshot();
+  assert.throws(()=>s.edit([{op:'insert',parent:'page',nodes:[spec]}]),/operations\[0\]/);
+  assert.deepEqual(s.snapshot(),before);
+ }
+});
+test('data fields cannot masquerade as created native components',()=>{
+ const s=session();s.edit([{op:'rows',rows:[{label:'Demo',className:'Button',props:'Example',children:'One',ref:'data-value'}]}]);
+ const row=s.design.content[0],ref=row._ref;
+ assert.equal(s.find('page').children.length,0);
+ assert.deepEqual(s.describe(row),{ref,fields:{label:'Demo',className:'Button',props:'Example',children:'One',ref:'data-value'}});
+ s.edit([{op:'update',target:ref,props:{className:'Grid',props:'Updated'}}]);
+ assert.equal(s.design.content[0].className,'Grid');
+ assert.equal(s.design.content[0].props,'Updated');
+ assert.deepEqual(s.check().errors,[]);
+});
 test('all currently registered native capabilities are exposed',()=>{
  for(const cls of ['VSD','SocketHandler','ResponderEmit','ModalDialog','CueCss','Timer','Prediction'])assert.ok(catalog[cls]);
 });
@@ -15,37 +62,37 @@ test('generic insertion is not restricted to board templates',()=>{
  assert.equal(s.find('choice').props.label,'Choose');assert.equal(s.check().errors.length,0);
 });
 test('native aliases resolve automatically generated names and keys',()=>{
- const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Grid',ref:'words',props:{rows:1,columns:2}}},{op:'insert',parent:'content',labels:['Yes','No'],defaults:{grid:'@words.name'}}]);
+ const s=session();s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Grid', ref: 'words', props: { rows: 1, columns: 2 } }] },{ op: "rows", rows: Array.from(['Yes', 'No'], label => ({ label })), defaults: { grid: '@words.name' } }]);
  assert.equal(s.design.content[0].grid,s.find('words').props.name);
 });
 test('new action origins must resolve; existing imported diagnostics remain preserved',()=>{
- const s=session();s.edit([{op:'insert',parent:'actions',node:{className:'Action',props:{origin:'missing'},children:[node('ActionUpdate',{stateName:'$Display',newValue:"''"})]}}]);
+ const s=session();s.edit([{ op: 'insert', parent: 'actions', nodes: [{ className: 'Action', props: { origin: 'missing' }, children: [node('ActionUpdate', { stateName: '$Display', newValue: "''" })] }] }]);
  assert.match(s.check().errors[0].message,/no matching named/);
  const imported=new AuthoringDocument(s.snapshot(),catalog);
  imported.edit([insert()]);assert.deepEqual(imported.check().errors,[]);
 });
 test('a supplied component alias also names the native action origin by default',()=>{
- const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Button',ref:'backspace',props:{label:'Backspace'}}}]);
+ const s=session();s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'backspace', props: { label: 'Backspace' } }] }]);
  assert.equal(s.find('backspace').props.name,'backspace');
 });
 test('reference remains valid after structural moves',()=>{
- const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Stack',ref:'box'}},insert(),{op:'move',target:'choice',parent:'box'},{op:'update',target:'choice',props:{label:'Moved'}}]);
+ const s=session();s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Stack', ref: 'box' }] },insert(),{op:'move',target:'choice',parent:'box'},{op:'update',target:'choice',props:{label:'Moved'}}]);
  assert.equal(s.find('box').children[0],s.find('choice'));
 });
 test('content row references remain valid after deletion before them',()=>{
- const s=session();s.edit([{op:'insert',parent:'content',labels:['One','Two']}]);
- const [a,b]=s.design.content;s.edit([{op:'remove',target:a._ref},{op:'update',target:b._ref,fields:{label:'Still two'}}]);
+ const s=session();s.edit([{ op: "rows", rows: Array.from(['One', 'Two'], label => ({ label })) }]);
+ const [a,b]=s.design.content;s.edit([{op:'remove',target:a._ref},{ op: 'update', target: b._ref, props: { label: 'Still two' } }]);
  assert.equal(s.design.content[0].label,'Still two');
 });
 for(const [label,ops]of Object.entries({
- 'unknown component':[{op:'insert',parent:'page',node:{className:'InventedWidget'}}],
+ 'unknown component':[{ op: 'insert', parent: 'page', nodes: [{ className: 'InventedWidget' }] }],
  'unsupported property':[{op:'update',target:'page',props:{bogus:true}}],
  'invalid numeric property':[{op:'update',target:'page',props:{columns:'many'}}],
- 'negative grid dimension':[{op:'insert',parent:'page',node:{className:'Grid',props:{rows:0}}}],
- 'bad child type':[{op:'insert',parent:'page',node:{className:'Grid',children:[node('Button')]}}],
+ 'negative grid dimension':[{ op: 'insert', parent: 'page', nodes: [{ className: 'Grid', props: { rows: 0 } }] }],
+ 'bad child type':[{ op: 'insert', parent: 'page', nodes: [{ className: 'Grid', children: [node('Button')] }] }],
  'root removal':[{op:'remove',target:'layout'}],
  'invalid index':[{...insert(),index:200}],
- 'self containment':[{op:'insert',parent:'page',node:{className:'Stack',ref:'box'}},{op:'move',target:'box',parent:'box'}],
+ 'self containment':[{ op: 'insert', parent: 'page', nodes: [{ className: 'Stack', ref: 'box' }] },{op:'move',target:'box',parent:'box'}],
  'duplicate aliases':[insert(),insert()],
  'missing target':[{op:'update',target:'missing',props:{label:'no'}}],
  'injected object key':[{op:'update',target:'page',props:JSON.parse('{"__proto__":{}}')}],
@@ -58,7 +105,7 @@ test('an error rolls back successful earlier edits in its batch',()=>{
 test('cue references defer until all connected edits are present',()=>{
  const s=session();const method=s.design.method.children[0];
  s.edit([{op:'update',target:method._ref,props:{Pattern:'my_pattern'}}]);assert.match(s.check().errors[0].message,/Unknown pattern/);
- s.edit([{op:'insert',parent:'pattern',node:{className:'PatternManager',props:{Key:'my_pattern',Name:'Custom'},children:[]}}]);assert.deepEqual(s.check().errors,[]);
+ s.edit([{ op: 'insert', parent: 'pattern', nodes: [{ className: 'PatternManager', props: { Key: 'my_pattern', Name: 'Custom' }, children: [] }] }]);assert.deepEqual(s.check().errors,[]);
 });
 test('imported advanced components survive unrelated edits',()=>{
  const base=structuredClone(empty);base.layout.children[0].children.push(node('Customize',{Code:'button { border-radius: 8px; }'}));
@@ -72,14 +119,14 @@ test('all six sections remain present after edits',()=>{
  const s=session();s.edit([insert()]);assert.deepEqual(Object.keys(s.snapshot()).sort(),Object.keys(empty).sort());
 });
 test('passive displays do not require synthetic action rules',()=>{
- const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Display',props:{stateName:'$Score'}}}]);assert.deepEqual(s.check().errors,[]);
+ const s=session();s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Display', props: { stateName: '$Score' } }] }]);assert.deepEqual(s.check().errors,[]);
 });
 test('new external connections are flagged for consent',()=>{
- const s=session();s.edit([{op:'insert',parent:s.design.method.children[0]._ref,node:{className:'SocketHandler',props:{URL:'wss://example.test/socket'}}}]);
+ const s=session();s.edit([{ op: 'insert', parent: s.design.method.children[0]._ref, nodes: [{ className: 'SocketHandler', props: { URL: 'wss://example.test/socket' } }] }]);
  assert.ok(s.check().effects.length);
 });
 test('missing uploaded media is an explicit reference error',()=>{
- const s=session();s.edit([{op:'insert',parent:'content',rows:[{label:'Photo',symbol:'absent.png'}]}]);assert.match(s.check().errors[0].message,/not been uploaded/);
+ const s=session();s.edit([{ op: "rows", rows: [{ label: 'Photo', symbol: 'absent.png' }] }]);assert.match(s.check().errors[0].message,/not been uploaded/);
 });
 test('pre-existing diagnostics do not conceal a new error',()=>{
  const base=structuredClone(empty);base.layout.props.unknown=1;const s=new AuthoringDocument(base,catalog);
@@ -87,18 +134,18 @@ test('pre-existing diagnostics do not conceal a new error',()=>{
 });
 
 test('content rows without a displayed grid must not count as a finished board',()=>{
- const s=session();s.edit([{op:'insert',parent:'content',labels:['Hello','Water']}]);
+ const s=session();s.edit([{ op: "rows", rows: Array.from(['Hello', 'Water'], label => ({ label })) }]);
  assert.deepEqual(s.check().errors,[]); // Valid structure, but empty Preview
  const review=presentationReview(s.snapshot(),'Create a communication board');
  assert.equal(review.ok,false);
  assert.match(review.errors.join(' '),/no visible, populated controls/);
 });
 test('a displayed populated native grid passes the generic presentation check',()=>{
- const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Grid',props:{name:'words',rows:1,columns:2},children:[{className:'GridFilter',props:{field:'#grid',operator:'equals',value:"'words'"}}]}},{op:'insert',parent:'content',labels:['Hello','Water'],defaults:{grid:'words'}}]);
+ const s=session();s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Grid', props: { name: 'words', rows: 1, columns: 2 }, children: [{ className: 'GridFilter', props: { field: '#grid', operator: 'equals', value: "'words'" } }] }] },{ op: "rows", rows: Array.from(['Hello', 'Water'], label => ({ label })), defaults: { grid: 'words' } }]);
  assert.equal(presentationReview(s.snapshot(),'Create a communication board').ok,true);
 });
 test('a visible but incomplete QWERTY keyboard is not a valid completion',()=>{
- const s=session();s.edit([{op:'insert',parent:'page',node:{className:'Button',props:{name:'a',label:'a'}}}]);
+ const s=session();s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { name: 'a', label: 'a' } }] }]);
  const review=presentationReview(s.snapshot(),'Create a QWERTY keyboard with display, Speak, Clear and Backspace.');
  assert.equal(review.ok,false);
  assert.match(review.errors.join(' '),/26 keys/);
@@ -142,7 +189,7 @@ test('new bind conditions retain first-match ordering and do not overwrite multi
  s.edit([{op:'bind',target:'choice',rules:[{condition:'$A',updates:{$Speak:"'A'"}},{condition:'$B',updates:{$Speak:"'B'"}}]}]);
  assert.deepEqual(conditions(s.design.actions.children),[['$A'],['$B'],['']]);
  const multi=rule('choice','$C',{$Speak:"'C and D'"});multi.children.unshift(node('ActionCondition',{Condition:'$D'}));
- s.edit([{op:'insert',parent:'actions',node:multi,index:0}]);
+ s.edit([{ op: 'insert', parent: 'actions', nodes: [multi], index: 0 }]);
  const before=structuredClone(s.design.actions.children[0]);
  s.edit([{op:'bind',target:'choice',rules:[{condition:'$C',updates:{$Speak:"'C'"}}]}]);
  assert.deepEqual(s.design.actions.children[0],before);
@@ -185,7 +232,7 @@ test('bind supports actual native wildcard and slot-completion events',()=>{
 });
 
 for(const className of ['TabControl','Radio'])test(`bind rejects direct-activation ${className} without inventing Actions`,()=>{
- const s=session();s.edit([{op:'insert',parent:'page',node:{className,ref:'direct'}}]);
+ const s=session();s.edit([{ op: 'insert', parent: 'page', nodes: [{ className, ref: 'direct' }] }]);
  const before=s.snapshot();
  assert.throws(()=>s.edit([{op:'bind',target:'direct',rules:[{updates:{$View:"'next'"}}]}]),/does not dispatch native Actions/);
  assert.deepEqual(s.snapshot(),before);
@@ -209,8 +256,8 @@ test('invalid bind modes, shapes and unresolved state aliases roll back the comp
 
 test('removing a layout subtree removes only its unique native bindings, retaining content and media references',()=>{
  const s=new AuthoringDocument(empty,catalog,{mediaNames:['photo.png']});
- s.edit([{op:'insert',parent:'page',node:{className:'Stack',ref:'group',children:[{className:'Button',ref:'removed',props:{label:'Remove'}}]}},
- insert(),{op:'insert',parent:'content',rows:[{label:'Keep image',symbol:'photo.png'}]},
+ s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Stack', ref: 'group', children: [{ className: 'Button', ref: 'removed', props: { label: 'Remove' } }] }] },
+ insert(),{ op: "rows", rows: [{ label: 'Keep image', symbol: 'photo.png' }] },
  {op:'bind',target:'removed',rules:[{updates:{$Message:"'Removed'"}}]},
  {op:'bind',target:'choice',rules:[{updates:{$Message:"'Kept'"}}]},
  {op:'bind',target:'init',rules:[{updates:{$Message:"''"}}]}]);
@@ -225,7 +272,7 @@ test('deletion retains shared-origin rules and resolves same-batch replacement b
  {op:'bind',target:'a',rules:[{updates:{$Count:'increment(1)'}}]}]);
  const action=structuredClone(s.design.actions.children[0]);
  s.edit([{op:'remove',target:'a'}]);assert.deepEqual(s.design.actions.children,[action]);
- s.edit([{op:'remove',target:'b'},{op:'insert',parent:'page',node:{className:'Button',ref:'replacement',props:{name:'shared'}}}]);
+ s.edit([{op:'remove',target:'b'},{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'replacement', props: { name: 'shared' } }] }]);
  assert.deepEqual(s.design.actions.children,[action]);assert.deepEqual(s.check().errors,[]);
 });
 
@@ -242,7 +289,7 @@ test('deletion keeps rules shared with a native method and preserves unrelated i
 
 test('cleanup never hides newly inserted orphan rules after deletion',()=>{
  const s=session();s.edit([insert(),{op:'bind',target:'choice',rules:[{updates:{$Score:'1'}}]}]);
- s.edit([{op:'remove',target:'choice'},{op:'insert',parent:'actions',node:rule('choice','',{$Score:'2'})}]);
+ s.edit([{op:'remove',target:'choice'},{ op: 'insert', parent: 'actions', nodes: [rule('choice', '', { $Score: '2' })] }]);
  assert.equal(s.design.actions.children.length,1);
  assert.match(s.check().errors[0].message,/no matching named/);
 });
@@ -269,8 +316,8 @@ for(const value of [0,3.5,true,false])test(`native expression value ${JSON.strin
 
 test('numeric and boolean expressions are rejected in conditions, filters and existing updates',()=>{
  for(const operations of [
-  [{op:'insert',parent:'actions',node:node('Action',{origin:'init'},[node('ActionCondition',{Condition:false}),node('ActionUpdate',{stateName:'$Score',newValue:'0'})])}],
-  [{op:'insert',parent:'page',node:node('Grid',{},[node('GridFilter',{field:'#grid',operator:'equals',value:1})])}],
+  [{ op: 'insert', parent: 'actions', nodes: [node('Action', { origin: 'init' }, [node('ActionCondition', { Condition: false }), node('ActionUpdate', { stateName: '$Score', newValue: '0' })])] }],
+  [{ op: 'insert', parent: 'page', nodes: [node('Grid', {}, [node('GridFilter', { field: '#grid', operator: 'equals', value: 1 })])] }],
  ]) {
   const s=session(),before=s.snapshot();assert.throws(()=>s.edit(operations),/must be a string containing native formula text/);assert.deepEqual(s.snapshot(),before);
  }
@@ -332,7 +379,7 @@ test('explicit TabControl state names retain intentional sharing and resolve thr
 
 for(const className of ['Page','Stack'])test(`binding ${className} directs initialization to the existing init event`,()=>{
  const s=session();let target='page';
- if(className==='Stack'){s.edit([{op:'insert',parent:'page',node:{className,ref:'container'}}]);target='container';}
+ if(className==='Stack'){s.edit([{ op: 'insert', parent: 'page', nodes: [{ className, ref: 'container' }] }]);target='container';}
  const before=s.snapshot();
  assert.throws(()=>s.edit([{op:'bind',target,rules:[{updates:{$Score:'0'}}]}]),/layout container.*target:"init".*do not create a Method for initialization/);
  assert.deepEqual(s.snapshot(),before);
@@ -340,8 +387,8 @@ for(const className of ['Page','Stack'])test(`binding ${className} directs initi
 
 for(const [className,nameField,parent] of [['Button','name','page'],['Grid','name','page'],['VSD','name','page'],['Display','Name','page'],['Method','Name','method']])test(`explicit binding generates a unique native ${className}.${nameField} when blank`,()=>{
  const s=session();s.edit([
-  {op:'insert',parent:'page',node:{className:'Button',props:{name:'control',label:'Existing'}}},
-  {op:'insert',parent,node:{className,ref:'control',props:{[nameField]:' '}}},
+  { op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { name: 'control', label: 'Existing' } }] },
+  { op: 'insert', parent, nodes: [{ className, ref: 'control', props: { [nameField]: ' ' } }] },
   {op:'bind',target:'control',rules:[{updates:{$Result:"'Activated'"}}]},
  ]);
  assert.equal(s.find('control').props[nameField],'control2');
@@ -350,11 +397,11 @@ for(const [className,nameField,parent] of [['Button','name','page'],['Grid','nam
 });
 
 test('Method binding preserves an explicit native name and still enforces its native parent',()=>{
- const s=session();s.edit([{op:'insert',parent:'method',node:{className:'Method',ref:'methodRef',props:{Name:'Existing method'}}},
+ const s=session();s.edit([{ op: 'insert', parent: 'method', nodes: [{ className: 'Method', ref: 'methodRef', props: { Name: 'Existing method' } }] },
  {op:'bind',target:'methodRef',rules:[{updates:{$Count:'increment(1)'}}]}]);
  assert.equal(s.find('methodRef').props.Name,'Existing method');
  assert.equal(s.design.actions.children[0].props.origin,'Existing method');
  const before=s.snapshot();
- assert.throws(()=>s.edit([{op:'insert',parent:'page',node:{className:'Method',ref:'wrongParent'}},{op:'bind',target:'wrongParent',rules:[{updates:{$Score:'0'}}]}]),/Method is not a child of Page/);
+ assert.throws(()=>s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Method', ref: 'wrongParent' }] },{op:'bind',target:'wrongParent',rules:[{updates:{$Score:'0'}}]}]),/Method is not a child of Page/);
  assert.deepEqual(s.snapshot(),before);
 });

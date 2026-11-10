@@ -1,0 +1,550 @@
+{
+  "releaseAcceptance": "INCOMPLETE: do not merge or deploy from passing regressions",
+  "generation": "All model outcomes below came from actual requests, not mocked generations. Ordinary native regressions and speech dispatch recording are separate verification. Failed requests with no usage returned are not zero-cost claims.",
+  "realGroqRuns": [
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "keyboard",
+      "started": "2026-11-10T00:33:59.405Z",
+      "protocol": 2,
+      "request": "Create a QWERTY keyboard with a message display, separate rows of letters, Space, Backspace, Clear, and Speak. Tapping letters and Space updates the display. Backspace removes one character. Clear empties it. Speak speaks the current nonempty message only when pressed; typing must not speak.",
+      "sourceTraceSHA256": "8438c1491bb06d53f5410a8f78629c187d7469d47bddfa844fd9865c23124ea5",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 31757,
+            "completionTokens": 3701,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls"
+          ]
+        },
+        {
+          "attempt": 2,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 1,
+            "promptTokens": 4075,
+            "completionTokens": 1111,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200
+          ],
+          "finishReasons": [
+            "tool_calls"
+          ]
+        },
+        {
+          "attempt": 3,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 1,
+            "promptTokens": 4075,
+            "completionTokens": 1107,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200
+          ],
+          "finishReasons": [
+            "tool_calls"
+          ]
+        },
+        {
+          "attempt": 4,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 31021,
+            "completionTokens": 4912,
+            "cachedTokens": 6144,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls"
+          ]
+        },
+        {
+          "attempt": 5,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 2,
+            "promptTokens": 8813,
+            "completionTokens": 1613,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "tool_calls"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "keyboard",
+      "started": "2026-11-10T00:33:59.724Z",
+      "protocol": 2,
+      "request": "Create a QWERTY keyboard with a message display, separate rows of letters, Space, Backspace, Clear, and Speak. Tapping letters and Space updates the display. Backspace removes one character. Clear empties it. Speak speaks the current nonempty message only when pressed; typing must not speak.",
+      "sourceTraceSHA256": "c5cfe4bd4112d0c97cfb75ae93bb611f540ab6c98007a320af0b20ebbc73257e",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 11288,
+            "completionTokens": 722,
+            "cachedTokens": 2048,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            400,
+            200,
+            400,
+            200,
+            400
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "unknown"
+          ]
+        },
+        {
+          "attempt": 2,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 10,
+            "promptTokens": 29767,
+            "completionTokens": 2194,
+            "cachedTokens": 15616,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            400,
+            200,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls"
+          ]
+        },
+        {
+          "attempt": 3,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 10630,
+            "completionTokens": 759,
+            "cachedTokens": 7424,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            200,
+            400,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "unknown",
+            "unknown"
+          ]
+        },
+        {
+          "attempt": 4,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 6728,
+            "completionTokens": 907,
+            "cachedTokens": 4096,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            400,
+            200,
+            200,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "unknown"
+          ]
+        },
+        {
+          "attempt": 5,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 6,
+            "promptTokens": 10518,
+            "completionTokens": 671,
+            "cachedTokens": 7936,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            400,
+            200,
+            200,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T01:41:08.221Z",
+      "protocol": 4,
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "eb90dd28d6ccdc291105a2bd06b0de75bed7857ed64e9146c5371c32451a1c30",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 8,
+            "promptTokens": 26892,
+            "completionTokens": 3506,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            400,
+            200,
+            400,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T01:39:24.795Z",
+      "protocol": 4,
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "68c6a73f42984ab157017a2f98f73f754ce6b10672915ed5acf88b788ba644e7",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 3,
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            400,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "unknown",
+            "unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T01:53:07.612Z",
+      "protocol": 5,
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "e89fba77e045419b0c91d233a87ac0f32eeb4bbbed0a20268a9862f5b3d752ea",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 7,
+            "promptTokens": 25317,
+            "completionTokens": 6080,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            400,
+            200,
+            400,
+            200
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "unknown",
+            "tool_calls"
+          ]
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T01:53:06.997Z",
+      "protocol": 5,
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "4c82356b425de6b48dcba0e83629e93047825e4e693ba5e112ea4a34a2d9df05",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 9,
+            "promptTokens": 22996,
+            "completionTokens": 3923,
+            "cachedTokens": 13568,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            200,
+            400,
+            200,
+            200,
+            200,
+            400
+          ],
+          "finishReasons": [
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "unknown"
+          ]
+        }
+      ]
+    }
+  ],
+  "localComparison": {
+    "model": "LiquidAI/LFM3-1.7B-MLX-6bit",
+    "checkpointCount": 1,
+    "hardware": "Apple M1, 16 GB",
+    "runtime": "MLX-VLM 0.7.12; MLX 0.32.4; loopback-only Metal inference",
+    "groqUsed": false,
+    "userChromeKeyAccessed": false,
+    "tasks": [
+      {
+        "task": "keyboard",
+        "attempts": 1,
+        "outcome": "passed ordinary Preview and native export/reimport",
+        "nativeDraftOutcome": "draft-ready",
+        "requests": 3,
+        "promptTokens": 13081,
+        "completionTokens": 202,
+        "totalTokens": 13283,
+        "elapsedSeconds": 38.54,
+        "reportedPeakMemoryGB": 2.38051532,
+        "sourceToolReads": [],
+        "providedSourceExcerpts": [],
+        "externalBrowserRequests": 0,
+        "evidence": "evidence/lfm3-local-keyboard/evidence.json"
+      },
+      {
+        "task": "restaurant",
+        "attempts": 1,
+        "outcome": "failed generation; no working native interface",
+        "nativeDraftOutcome": "failed",
+        "requests": 6,
+        "promptTokens": 26857,
+        "completionTokens": 269,
+        "totalTokens": 27126,
+        "elapsedSeconds": 71.8,
+        "reportedPeakMemoryGB": 2.381711352,
+        "sourceToolReads": [],
+        "providedSourceExcerpts": [],
+        "externalBrowserRequests": 0,
+        "evidence": "evidence/lfm3-local-restaurant/evidence.json"
+      },
+      {
+        "task": "edit",
+        "attempts": 1,
+        "outcome": "passed ordinary Preview and native export/reimport; exactly one background property changed",
+        "nativeDraftOutcome": "draft-ready",
+        "requests": 3,
+        "promptTokens": 13077,
+        "completionTokens": 203,
+        "totalTokens": 13280,
+        "elapsedSeconds": 37.57,
+        "reportedPeakMemoryGB": 2.381711352,
+        "sourceToolReads": [],
+        "providedSourceExcerpts": [],
+        "externalBrowserRequests": 0,
+        "evidence": "evidence/lfm3-local-edit/evidence.json"
+      },
+      {
+        "task": "import-edit",
+        "attempts": 1,
+        "outcome": "failed requested visual change: invalid quoted color accepted before validator correction",
+        "nativeDraftOutcome": "draft-ready",
+        "requests": 2,
+        "promptTokens": 8348,
+        "completionTokens": 85,
+        "totalTokens": 8433,
+        "elapsedSeconds": 23.94,
+        "reportedPeakMemoryGB": 2.381711352,
+        "sourceToolReads": [],
+        "providedSourceExcerpts": [],
+        "externalBrowserRequests": 0,
+        "evidence": "evidence/lfm3-local-import-edit/evidence.json"
+      },
+      {
+        "task": "import-edit-source",
+        "attempts": 1,
+        "outcome": "failed requested visual change: color syntax repaired automatically, but actual buttons remained blue",
+        "nativeDraftOutcome": "draft-ready",
+        "requests": 3,
+        "promptTokens": 14968,
+        "completionTokens": 141,
+        "totalTokens": 15109,
+        "elapsedSeconds": 41.2,
+        "reportedPeakMemoryGB": 2.382710776,
+        "sourceToolReads": [],
+        "providedSourceExcerpts": [
+          "src/components/grid.js",
+          "src/components/props.js"
+        ],
+        "externalBrowserRequests": 0,
+        "evidence": "evidence/lfm3-local-import-edit-source/evidence.json"
+      }
+    ],
+    "conclusion": "Useful for the tested native helper and narrow selected edit. Not sufficient evidence for a reliable general-purpose interface builder: restaurant creation and imported-grid visual request failed. Do not replace Groq or claim deployment acceptance from this experiment.",
+    "limitations": [
+      "Single attempt per task; not a reliability estimate.",
+      "Real model responses, not mocked generations. Native speech dispatch was observed with audio API recorded in isolated browsers; audible playback was not independently measured.",
+      "Read-only repository source tool was available but unused; final imported-edit retry also received actual Grid/Color source excerpts.",
+      "Reported tokens include repeated prompt context; local inference has no Groq quota.",
+      "Existing editor progress text says Groq because the local experiment injects only the inference transport; all recorded inference calls went to the local model."
+    ]
+  },
+  "limitations": [
+    "Protocols differ as observed failures were corrected; these runs are not a controlled model ranking.",
+    "Only successful keyboard drafts listed here were replayed in full native Preview. Restaurant runs failed, so none is a functional pass.",
+    "Local imported-grid visual requests failed despite native draft acceptance; explicit computed-style verification caught unchanged blue buttons.",
+    "Remaining real acceptance includes current broad creation, score/timer, access refinements, imported selected edits, final repeatability and deployed browser verification."
+  ],
+  "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository."
+}

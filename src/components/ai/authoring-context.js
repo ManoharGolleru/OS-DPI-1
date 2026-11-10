@@ -14,9 +14,51 @@ export function compactSchemas(catalog,names,{help=false}={}) {
   }]));
 }
 
+/** Keep actionable edit feedback when a large batch has many similar errors.
+ * Never replace a successful staged edit with an unrelated inspection error.
+ */
+export function compactFeedback(result,{catalog={},limit=5000}={}) {
+  const size=value=>JSON.stringify(value).length;
+  if(size(result)<=limit)return result;
+  const error=e=>typeof e==="string"?e.slice(0,400):{ref:e.ref,key:e.key,message:String(e.message||"").slice(0,400),deferred:e.deferred};
+  const short={ok:result.ok,staged:result.staged,error:result.error?.slice(0,800),instruction:result.instruction?.slice(0,600),truncated:true};
+  for(const key of ["keyboard","controls","keys"])if(result[key])short[key]=result[key];
+  if(result.errors?.length){short.errors=result.errors.slice(0,4).map(error);short.moreErrors=Math.max(0,result.errors.length-4);}
+  else if(result.pending?.length){short.pending=result.pending.slice(0,4).map(error);short.morePending=Math.max(0,result.pending.length-4);}
+  if(result.created){
+    short.created=result.created.filter(n=>n.kind!=="data row"&&!["Action","ActionCondition","ActionUpdate"].includes(n.className)).slice(0,16).map(n=>({ref:n.ref,className:n.className,name:n.name===undefined?undefined:String(n.name).slice(0,80)}));
+    short.createdCount=result.created.length;
+  }
+  if(result.interactions){
+    short.tests={passed:result.interactions.filter(t=>t.ok).length,failed:result.interactions.filter(t=>!t.ok).length};
+    short.interactions=result.interactions.filter(t=>!t.ok).slice(0,4).map(t=>({name:String(t.name||"").slice(0,80),ok:false,error:String(t.error||"").slice(0,400)}));
+  }
+  if(result.presentation)short.presentation=result.presentation.summary || result.presentation;
+  if(result.schemas){
+    short.schemas={};short.omittedClasses=[];
+    for(const [name,schema] of Object.entries(compactSchemas(catalog,Object.keys(result.schemas)))){
+      short.schemas[name]=schema;
+      if(size(short)>limit-500){delete short.schemas[name];short.omittedClasses.push(name);}
+    }
+  }
+  if(result.example && size({...short,example:result.example})<=limit)short.example=result.example;
+  if(result.object){
+    const brief=n=>({ref:n.ref,className:n.className,totalChildren:n.totalChildren,
+      props:Object.fromEntries(Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v!=="string"||v.length<=240)),
+      omittedProps:Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v==="string"&&v.length>240).map(([key])=>key)});
+    const object={...brief(result.object),children:result.object.children?.slice(0,4).map(brief)};
+    short.object=size({...short,object})<=limit?object:{ref:result.object.ref,className:result.object.className,totalChildren:result.object.totalChildren};
+  }
+  if(result.content)short.content={total:result.content.total,rows:result.content.rows.slice(0,5)};
+  while(size(short)>limit && short.created?.length)short.created.pop();
+  if(size(short)>limit)delete short.content;
+  if(size(short)>limit){for(const key of ["schemas","object","example","presentation"])delete short[key];short.errors=short.errors?.slice(0,2);short.pending=short.pending?.slice(0,2);short.interactions=short.interactions?.slice(0,2);}
+  return short;
+}
+
 export function describeForModel(session,item,{depth=1,offset=0,limit=20,brief=false}={}) {
   limit=Math.max(1,Math.min(100,limit));offset=Math.max(0,offset);
-  if(!item.className)return session.describe(item);
+  if(!item.className || session.parents.get(item._ref)?.section==="content")return session.describe(item);
   const children=item.children || [];
   const props=brief?Object.fromEntries(Object.entries(item.props||{}).filter(([,v])=>typeof v!=="string"||v.length<=240)):item.props;
   const omittedProps=brief?Object.keys(item.props||{}).filter(k=>!(k in props)):[];
