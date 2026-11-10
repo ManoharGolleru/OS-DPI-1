@@ -704,6 +704,7 @@ test('requested native timer wiring is supplied before the first provider reques
  await page.getByTestId('author-request').fill('Create a score activity with a two-second timer.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
  expect(requests).toHaveLength(1);const guide=requests[0].messages[0].content;
  expect(guide).toContain('RELEVANT NATIVE WIRING');expect(guide).toContain('@delay.Key');expect(guide).toContain('under the method section');expect(guide).toContain('AND one trailing space');
+ expect(guide).toContain('increment(1)');expect(guide).toContain('Button ref answer');
 });
 
 test('an explicit output-size rejection lowers the command cap and leaves room for Qwen JSON',async({page})=>{
@@ -778,4 +779,33 @@ test('smaller context retains inactive native access methods and their actual ti
  expect(dwell).toBeDefined();expect([false,'false']).toContain(dwell.active);expect(dwell.ref).toBeTruthy();
  expect(dwell.timers).toHaveLength(1);expect(dwell.timers[0]).toMatchObject({seconds:'1.5'});expect(dwell.timers[0].ref).toBeTruthy();expect(dwell.timers[0].key).toBeTruthy();
  expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
+});
+
+test('provider truncation asks for smaller complete commands with the actual reply allowance',async({page})=>{
+ const {requests}=await setup(page,[async route=>route.fulfill({status:400,headers:{'x-ratelimit-remaining-tokens':'99999','access-control-expose-headers':'x-ratelimit-remaining-tokens'},json:{error:{code:'json_validate_failed',message:'max completion tokens reached before generating a valid document: the output was truncated to fit max_completion_tokens and is missing required content.',failed_generation:'{"command":{"name":"edit","operations":[]}}'}}}),
+  ['edit',{operations:[{op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Greeting'}}]},{op:'bind',target:'init',rules:[{updates:{$Greeting:"'Hello'"}}]}],summary:'Created the greeting.'}],
+ ]);
+ await generate(page,'Create a greeting display saying Hello.');
+ expect(requests).toHaveLength(2);
+ for(const request of requests){const task=JSON.parse(request.messages[1].content);expect(task.commandTokenBudget).toBe(request.max_completion_tokens);expect(task.editBatchLimit).toBe(Math.max(1,Math.floor(request.max_completion_tokens/400)));}
+ expect(requests[1].messages.some(m=>m.content.includes('command was truncated at')&&m.content.includes('No partial command was applied'))).toBe(true);
+ await buttons(page);await expect(page.locator('#UI')).toContainText('Hello');
+});
+
+test('a short quota retry after seven minutes uses the actual eight-minute deadline',async({page})=>{
+ const {errors}=await setup(page);await page.evaluate(()=>fixture.Globals.methods.stop());await page.clock.install();
+ await page.evaluate(()=>{
+  const f=fixture,session=f.documentSession(f.emptyNative());let calls=0;
+  window.deadlineResult=null;
+  f.authorInterface({session,request:'Create a greeting display saying Hello.',turn:async()=>{
+   calls++;
+   if(calls===8)throw Object.assign(new Error('Temporary TPM exhaustion'),{kind:'rate-limit',retryAfter:'5'});
+   const reply=calls<8?f.commandReply('inspect',{classes:['Display']}):f.commandReply('edit',{operations:[{op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Greeting'}}]},{op:'bind',target:'init',rules:[{updates:{$Greeting:"'Hello'"}}]}],summary:'Created the greeting.'});
+   return {message:f.decodeAuthoringResponse(reply.choices[0].message.content),usage:{total_tokens:100},...(calls<8?{rate:{remaining:0,reset:'60s',receivedAt:Date.now()}}:{})};
+  }}).then(result=>window.deadlineResult={accepted:result.accepted,calls}).catch(e=>window.deadlineResult={error:e.message,calls});
+ });
+ await page.clock.runFor(427000);
+ expect(await page.evaluate(()=>window.deadlineResult)).toEqual({accepted:true,calls:9});
+ expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
+ expect(errors).toEqual([]);
 });

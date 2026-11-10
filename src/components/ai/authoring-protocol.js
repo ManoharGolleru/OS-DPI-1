@@ -10,22 +10,22 @@ const definitions={
   state:object({state:string,value:scalar}),
   update:object({state:string,expression:{...string,description:"Native formula; use single quotes for text, e.g. add_word(#label), 'Ready', or ''."}}),
   rule:object({condition:string,updates:array(ref("update"))}),
-  step:object({target:{...string,description:"Exact component ref, e.g. answer, without @. @ref.property substitutes scalar property values only."},label:nullable({...string,description:"Grid/VSD content label; null for a Button or TabPanel. Never use click or active."}),data:fields}),
+  step:object({target:{...string,description:"Exact component ref, e.g. answer, without @. @ref.property substitutes scalar property values only."},label:nullable({...string,description:"Grid/VSD content label; null for a Button or TabPanel."}),data:fields}),
   test:object({name:string,initial:states,steps:array(ref("step")),expect:states}),
 };
 const operationSchemas={
-  insert:object({op:tag("insert"),parent:string,className:string,ref:nullable({...string,description:"NEW meaningful alias such as foodWords. Do not guess numeric refs like n10; they may already exist. null if unused."}),props:fields,index:nullable({...integer,description:"Position among destination children/rows, not the operation number. null appends; use null unless moving to a specific position."})}),
+  insert:object({op:tag("insert"),parent:{...string,description:"Container ref: page for layout, method for Method, pattern for PatternManager, cues for cues, actions for Action."},className:string,ref:nullable({...string,description:"New unused meaningful ref; null if not targeted later."}),props:fields,index:nullable({...integer,description:"Position among destination children/rows, not the operation number. null appends; use null unless moving to a specific position."})}),
   rows:object({op:tag("rows"),rows:array(fields),defaults:fields,index:nullable({...integer,description:"Position among destination children/rows, not the operation number. null appends; use null unless moving to a specific position."})}),
   update:object({op:tag("update"),target:string,props:fields,unset:array(string)}),
   move:object({op:tag("move"),target:string,parent:string,index:nullable({...integer,description:"Position among destination children/rows, not the operation number. null appends; use null unless moving to a specific position."})}),
   remove:object({op:tag("remove"),target:string}),
-  bind:object({op:tag("bind"),target:string,rules:array(ref("rule")),mode:{type:"string",enum:["merge","replace"]}}),
+  bind:object({op:tag("bind"),target:{...string,description:"Button/Grid/VSD/Display/Method ref or init. Access handlers use their enclosing Method ref."},rules:array(ref("rule")),mode:{type:"string",enum:["merge","replace"]}}),
 };
 export const AUTHORING_EXAMPLE_TOPICS=["keyboard","speech","navigation","state","access","timer","media"];
 const commandSchemas={
   inspect:object({name:tag("inspect"),target:nullable({...string,description:"Existing ref or page/layout/actions/method/pattern/cues/content/functions/media. Use classes for class names."}),classes:{...array(string),description:"Registered classes whose native property/child schemas you need."},example:nullable({type:"string",enum:AUTHORING_EXAMPLE_TOPICS,description:"Canonical native wiring notes; choose a topic, never write a tutorial here."}),offset:integer,limit:{...integer,description:"Child count 1–100, not a byte/token limit."},depth:{...integer,description:"Child-tree depth 0–5."}}),
-  edit:{description:"Stage native operations; use operations:[] with tests/summary to validate and submit an already staged draft without inventing a new edit.",...object({name:tag("edit"),operations:array(ref("operation")),tests:nullable(array(ref("test"))),title:nullable(string),summary:nullable(string)})},
-  recipe:{description:"Complete keyboard fragment: Display, keys, Space, Backspace, Clear, Speak, Speech and actions. Do not add these separately before calling recipe.",...object({name:tag("recipe"),recipe:tag("keyboard"),parent:nullable(string),backspace:nullable({type:"boolean"}),keyRows:nullable(array(string)),color:nullable(string),displayPosition:nullable({type:"string",enum:["top","bottom"]}),title:nullable(string),summary:nullable(string)})},
+  edit:{description:"Stage native edits; operations:[] submits an existing draft with tests and summary.",...object({name:tag("edit"),operations:array(ref("operation")),tests:nullable(array(ref("test"))),title:nullable(string),summary:nullable(string)})},
+  recipe:{description:"Complete editable keyboard: display, keys, controls, speech and actions.",...object({name:tag("recipe"),recipe:tag("keyboard"),parent:nullable(string),backspace:nullable({type:"boolean"}),keyRows:nullable(array(string)),color:nullable(string),displayPosition:nullable({type:"string",enum:["top","bottom"]}),title:nullable(string),summary:nullable(string)})},
   check:object({name:tag("check"),tests:nullable(array(ref("test")))}),
   finish:object({name:tag("finish"),title:nullable(string),summary:string,question:nullable(string)}),
 };

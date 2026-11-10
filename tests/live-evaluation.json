@@ -1850,6 +1850,56 @@
         }
       ],
       "sourceTraceFile": "gpt-oss-score-timer-strict-protocol-18-medium.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T06:23:53.125Z",
+      "protocol": 19,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "medium",
+      "request": "Create a score display starting at 0, Add 1, Remove 1 and Reset buttons. Remove must not go below zero. Reset returns the score to zero and status Ready. Also show Ready initially. Pressing T starts a two-second timer; only after it expires show Time up. The timer must not change the score. Keep the activity silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "4675ed74f3dd4bc3a825f7ff4b8282ed6daed89eda878c7bf480b374ef84abe2",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 9,
+            "promptTokens": 31433,
+            "completionTokens": 6769,
+            "cachedTokens": 7680,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            400,
+            200,
+            200,
+            200,
+            200,
+            200,
+            200,
+            429
+          ],
+          "finishReasons": [
+            "unknown",
+            "unknown",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "unknown"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-score-timer-strict-protocol-19-medium.json"
     }
   ],
   "localComparison": {
@@ -1962,9 +2012,9 @@
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol19: preserve inactive access context, bounded60K correction ceiling, native-name and duplicate-insert repair targets",
-    "nodeTests": 86,
-    "browserTests": 90,
+    "source": "protocol20: actual reply budgets/chunking, truncation feedback, elapsed-deadline quota retries, native root metadata and state-function guidance",
+    "nodeTests": 87,
+    "browserTests": 92,
     "productionBuild": "pass"
   },
   "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",

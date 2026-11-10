@@ -7,6 +7,11 @@ const json=name=>JSON.parse(readFileSync(new URL(name,import.meta.url),'utf8'));
 const catalog=json('./native-catalog.json'), empty=json('./native-empty.json');
 const session=()=>new AuthoringDocument(empty,catalog);
 const insert=()=>({ op: 'insert', parent: 'page', nodes: [{ className: 'Button', ref: 'choice', props: { name: 'choice', label: 'Choose' } }] });
+test('native component schemas identify their valid root section before insertion',()=>{
+ const schemas=compactSchemas(catalog,['Method','PatternManager','CueCss','Button']);
+ assert.equal(schemas.Method.parentSection,'method');assert.equal(schemas.PatternManager.parentSection,'pattern');assert.equal(schemas.CueCss.parentSection,'cues');assert.equal(schemas.Button.parentSection,undefined);
+ const s=session();s.edit([{op:'insert',parent:schemas.Method.parentSection,nodes:[{className:'Method',props:{Active:true,Pattern:'NullPattern'}}]}]);assert.equal(s.check().errors.length,0);
+});
 test('oversized inspection preserves requested dwell wiring before class schemas',()=>{
  const s=session(),method=s.design.method.children.find(n=>/dwell/i.test(n.props.Name));
  assert.ok(method);

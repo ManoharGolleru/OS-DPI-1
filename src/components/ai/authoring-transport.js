@@ -52,6 +52,7 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
   } else rate.source="provider";
   rates.set(model,rate);
   const errorMessage=String(data.error?.message||"");
+  const truncatedHint=`Your command was truncated at ${maxTokens} output tokens. No partial command was applied. Split the work into complete commands with at most ${Math.max(1,Math.floor(maxTokens/400))} edit operations each. Include all command fields; keep summary null until the entire request is ready.`;
   const outputLimit=/output tokens per minute|\bOTPM\b/i.test(errorMessage) && /expected output tokens exceed|reduce max_tokens/i.test(errorMessage)
     ? Number(/\bLimit\s+([\d,]+)/i.exec(errorMessage)?.[1]?.replaceAll(",","")) : NaN;
   const requestedOutput=Number(/\bRequested\s+([\d,]+)/i.exec(errorMessage)?.[1]?.replaceAll(",",""));
@@ -82,11 +83,12 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
     if(oversizedOutput)error.completionLimit=outputLimit;
     // Strict output can still fail provider validation. Decode only for a
     // precise correction; NEVER execute or recover rejected generations.
-    if(kind==="bad-response"&&failed)try{decodeAuthoringResponse(failed);}catch(problem){error.repairHint=problem.message.slice(0,400);}
+    if(kind==="bad-response" && /max[_ ]completion[_ ]tokens.*reached|output was truncated/i.test(errorMessage))error.repairHint=truncatedHint;
+    else if(kind==="bad-response"&&failed)try{decodeAuthoringResponse(failed);}catch(problem){error.repairHint=problem.message.slice(0,400);}
     throw error;
   }
   const invalidResponse=message=>Object.assign(new AIError("bad-response",message),{usage:data.usage||{},rate});
-  if(choice?.finish_reason === "length")throw invalidResponse("Groq stopped before completing its command. No partial edits were applied.");
+  if(choice?.finish_reason === "length")throw Object.assign(invalidResponse("Groq stopped before completing its command. No partial edits were applied."),{repairHint:truncatedHint});
   if(!choice?.message)throw invalidResponse("Groq returned no message.");
   // Do not store hidden reasoning or authorization headers in the editor history.
   let message;

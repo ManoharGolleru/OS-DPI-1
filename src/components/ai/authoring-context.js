@@ -1,7 +1,9 @@
 /** Bounded views into the native document. Full objects remain available by ref. */
+import {ROOTS} from "./authoring-document.js";
 export function compactSchemas(catalog,names,{help=false}={}) {
   return Object.fromEntries(names.filter(n=>catalog[n]).map(name=>[name,{
     description:catalog[name].description,
+    ...Object.fromEntries(Object.entries(ROOTS).filter(([,root])=>catalog[root]?.children.includes(name)).map(([section])=>["parentSection",section])),
     children:catalog[name].children,
     props:Object.fromEntries(Object.entries(catalog[name].props).map(([k,p])=>[k,[
       p.expression?"expression":p.kind || p.type,
