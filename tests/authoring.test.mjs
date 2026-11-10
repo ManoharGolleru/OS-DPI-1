@@ -47,6 +47,14 @@ test('rejected access edits identify actual native parent refs without accepting
  s.edit([{op:'bind',target:'activity',rules:[{updates:{$Status:"'Time up'"}}]}]);
  assert.equal(s.design.actions.children.at(-1).props.origin,'Different native name');
 });
+test('native names and duplicate inserts provide exact repair targets without alias resolution',()=>{
+ const s=session();s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref:'addButton',props:{name:'add',label:'Add 1'}}]}]);const before=s.snapshot();
+ assert.throws(()=>s.find('add'),/native name; use target "addButton"/);
+ assert.equal(s.find('addButton').props.name,'add');
+ assert.throws(()=>s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref:'addButton'}]}]),/Change it with update target "addButton"/);
+ assert.deepEqual(s.snapshot(),before);
+ s.edit([{op:'update',target:'addButton',props:{label:'Add one'}}]);assert.equal(s.find('addButton').props.label,'Add one');
+});
 test('large staged-edit errors retain the actual corrections and native refs within the tool budget',()=>{
  const feedback={ok:false,staged:true,instruction:'Edits are kept; correct the bindings, do not repeat inserts.',
   errors:Array.from({length:30},(_,i)=>({ref:'action'+i,key:'action'+i+'.origin',message:'No matching named layout component. Bind the native component ref.'})),

@@ -1808,6 +1808,48 @@
         }
       ],
       "sourceTraceFile": "qwen-dwell-strict-protocol-17-adaptive.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T06:03:36.158Z",
+      "protocol": 18,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "medium",
+      "request": "Create a score display starting at 0, Add 1, Remove 1 and Reset buttons. Remove must not go below zero. Reset returns the score to zero and status Ready. Also show Ready initially. Pressing T starts a two-second timer; only after it expires show Time up. The timer must not change the score. Keep the activity silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "df5653f2a616125fe41e44ad8901f30fd6e4452063dde7b130e6e6e00eabb414",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 26435,
+            "completionTokens": 9017,
+            "cachedTokens": 4096,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-score-timer-strict-protocol-18-medium.json"
     }
   ],
   "localComparison": {
@@ -1920,11 +1962,68 @@
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol18: adaptive output cap, exact native parent/binding feedback, version-correct validation invalidation",
-    "nodeTests": 85,
-    "browserTests": 89,
+    "source": "protocol19: preserve inactive access context, bounded60K correction ceiling, native-name and duplicate-insert repair targets",
+    "nodeTests": 86,
+    "browserTests": 90,
     "productionBuild": "pass"
   },
   "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",
-  "keyboardVerificationNote": "OSS protocol12 initial viewport checks measured intentional hover-border scaling. Original failures/screenshots retained; every untouched archive subsequently passed text/layout checks with pointer off controls, interactions and native roundtrip. Earlier OSS protocol11 duplicate-display archive remains a functional failure."
+  "keyboardVerificationNote": "OSS protocol12 initial viewport checks measured intentional hover-border scaling. Original failures/screenshots retained; every untouched archive subsequently passed text/layout checks with pointer off controls, interactions and native roundtrip. Earlier OSS protocol11 duplicate-display archive remains a functional failure.",
+  "realGroqTargetedEdits": [
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 18,
+      "configuration": {
+        "reasoningEffort": "medium",
+        "temperature": 1
+      },
+      "request": "Make just this Clear button bigger. Preserve its text and behavior, all other components, access settings, voices and content.",
+      "requests": 1,
+      "promptTokens": 1696,
+      "completionTokens": 707,
+      "reportedTokens": 2403,
+      "sourceTraceSHA256": "401a8e38d66597e07fffbaf21d980a4a5c423cf920c7786a9316a7b5f9434d77",
+      "outcome": "pass",
+      "nativeDiffs": [
+        {
+          "path": "layout.children[0].children[2].children[1].props.scale",
+          "before": "1",
+          "after": "1.5"
+        }
+      ],
+      "otherFiveJSONEntriesByteIdentical": true,
+      "actualOriginalEveryArchiveEntryUnchanged": true,
+      "normalPreviewAndNativeExportReimport": "pass",
+      "actualClearWidth": {
+        "desktop": {
+          "before": 720,
+          "after": 864
+        },
+        "tablet": {
+          "before": 512,
+          "after": 614.390625
+        }
+      },
+      "actualManualAIUndoInterleave": {
+        "AIUndoRefusedToOverwriteManualSpeakResize": true,
+        "refusedArchiveEntriesUnchanged": true,
+        "nativeLayoutUndoRestoredExactlyAIResult": true,
+        "AIUndoRestoredExactlyOriginal": true,
+        "AIRedoRestoredExactlyAIResult": true
+      },
+      "evidence": [
+        "qwen-selected-bigger-protocol-18-preservation.json",
+        "qwen-selected-bigger-protocol-18-manual-ai-undo.json",
+        "qwen-selected-bigger-protocol-18-size/evidence.json",
+        "qwen-selected-bigger-protocol-18-preview/evidence.json"
+      ]
+    }
+  ],
+  "taskBounds": {
+    "reportedOrConservativeTokenCeiling": 60000,
+    "commandRounds": 12,
+    "normalUIWallClockMinutes": 8,
+    "estimatedPerRequestTotalTokens": 7900,
+    "reason": "Real complex attempts staged useful components but exhausted the former30K ceiling during corrections. This is a maximum, not a target; simple edits finish immediately. Real-model acceptance remains incomplete."
+  }
 }

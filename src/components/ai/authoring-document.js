@@ -118,6 +118,10 @@ export class AuthoringDocument {
     const found = this.refs.get(ref);
     if(!found && typeof ref==="string" && ref.startsWith("@") && (this.refs.has(ref.slice(1)) || own(ROOTS,ref.slice(1)) || ref.slice(1)==="page"))
       throw new Error(`Unknown reference ${ref}. Use target ${ref.slice(1)} without @; @ref.property is only for scalar values.`);
+    if(!found){
+      const named=[...this.refs.values()].filter(n=>n.props?.name===ref || n.props?.Name===ref);
+      if(named.length===1)throw new Error(`Unknown reference ${ref}. That is a native name; use target "${named[0]._ref}" (${named[0].className}). References and native names are different.`);
+    }
     assert(found, `Unknown reference ${ref}. Use inspect to read the current document.`);
     return found;
   }
@@ -163,7 +167,7 @@ export class AuthoringDocument {
     result._ref=spec.ref || this.nextRef();
     assert(/^[A-Za-z][\w-]{0,80}$/.test(result._ref) && ![...SECTIONS,"page"].includes(result._ref), "Use a short unique reference, not a section name.");
     const existing=this.refs.get(result._ref);
-    assert(!existing,`Reference already exists: ${result._ref} (${existing?.className || "data row"} ${existing?.props?.name || existing?.props?.Name || ""}). For a NEW component use a fresh meaningful ref such as scoreDisplay, or omit ref when no later operation targets it. Never guess the next n-number; existing refs remain valid update/parent targets.`);
+    assert(!existing,`Reference already exists: ${result._ref} (${existing?.className || "data row"} ${existing?.props?.name || existing?.props?.Name || ""}). Change it with update target "${result._ref}". For a genuinely NEW component use another meaningful ref or omit ref. Do not reinsert successful batches or guess n-numbers.`);
     this.refs.set(result._ref,result); // children may refer to the new parent
     result.children=(spec.children || []).map(child=>this.prepare(child));
     return result;

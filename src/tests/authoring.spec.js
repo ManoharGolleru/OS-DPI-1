@@ -631,7 +631,7 @@ test('strict-schema provider rejection gives precise bounded repair feedback wit
 });
 
 test('charged truncated structured responses count toward the request budget',async({page})=>{
-  const {requests}=await setup(page,[async route=>route.fulfill({json:{choices:[{finish_reason:'length',message:{role:'assistant',content:'{"command":'}}],usage:{prompt_tokens:26000,completion_tokens:4000,total_tokens:30000}}})]);
+  const {requests}=await setup(page,[async route=>route.fulfill({json:{choices:[{finish_reason:'length',message:{role:'assistant',content:'{"command":'}}],usage:{prompt_tokens:56000,completion_tokens:4000,total_tokens:60000}}})]);
   const before=await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()));
   await page.getByTestId('author-request').fill('Create an activity.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
   expect(requests).toHaveLength(1);await expect(page.getByTestId('author-error')).toContainText('token budget');
@@ -766,4 +766,16 @@ test('native validation survives inspections but is invalidated by a successful 
   expect(tasks[index].lastValidation).toMatchObject({round:7,ok:false,interactions:[{name:'opening'}]});
   expect(tasks[index].lastValidation.error).toBeUndefined();
  }
+});
+
+test('smaller context retains inactive native access methods and their actual timer refs',async({page})=>{
+ const {requests}=await setup(page,[async route=>route.fulfill({status:413,json:{error:{message:'Request too large; reduce context.'}}}),
+  async route=>route.fulfill({status:401,json:{error:{message:'Synthetic stop after context capture'}}}),
+ ]);
+ await page.getByTestId('author-request').fill('Configure pointer dwell for 0.8 seconds.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
+ expect(requests).toHaveLength(2);
+ const task=JSON.parse(requests[1].messages[1].content),dwell=task.access.find(m=>m.name==='Pointer dwell');
+ expect(dwell).toBeDefined();expect([false,'false']).toContain(dwell.active);expect(dwell.ref).toBeTruthy();
+ expect(dwell.timers).toHaveLength(1);expect(dwell.timers[0]).toMatchObject({seconds:'1.5'});expect(dwell.timers[0].ref).toBeTruthy();expect(dwell.timers[0].key).toBeTruthy();
+ expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
 });
