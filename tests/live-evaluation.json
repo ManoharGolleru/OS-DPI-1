@@ -1718,6 +1718,96 @@
         }
       ],
       "sourceTraceFile": "qwen-dwell-strict-protocol-16-medium.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T05:46:50.245Z",
+      "protocol": 17,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "medium",
+      "request": "Create a score display starting at 0, Add 1, Remove 1 and Reset buttons. Remove must not go below zero. Reset returns the score to zero and status Ready. Also show Ready initially. Pressing T starts a two-second timer; only after it expires show Time up. The timer must not change the score. Keep the activity silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "225ea6adfa6198240e68c028f592ea04cafc2570ee6de2ca165b737d370ec93c",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 21041,
+            "completionTokens": 5714,
+            "cachedTokens": 3840,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "unknown",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-score-timer-strict-protocol-17-medium.json"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T05:46:50.894Z",
+      "protocol": 17,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a board with Yes, No, Clear and one message display, initially empty. Hover Yes or No for 0.8 seconds to append that word. Show a visible hover cue. Moving away early cancels the choice; staying still after selection must not keep adding it. Clear empties the message. Use pointer dwell.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "01231cfc97c9903a420b5d2a99c45dc6ec5280b44908b00e76efdac6d1e063a9",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 8,
+            "promptTokens": 27973,
+            "completionTokens": 2795,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            200,
+            429,
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "unknown",
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "qwen-dwell-strict-protocol-17-adaptive.json"
     }
   ],
   "localComparison": {
@@ -1826,14 +1916,13 @@
     "Ordinary Preview and native roundtrip passes are recorded per attempt; isolated draft-ready status alone does not prove a working interface.",
     "Native speech dispatch was recorded in isolated replay browsers; audible playback was not independently measured.",
     "Local imported-grid visual requests failed despite native draft acceptance; computed-style verification caught unchanged blue buttons.",
-    "Remaining real acceptance includes score/timer, access refinements, further imported selected edits, final repeatability and deployed browser verification.",
-    "Replacement-key account explicitly reported Qwen OTPM1000. Adaptive response cap and Qwen no-reasoning mode under that cap passed deterministic regressions but await distinct real-model validation."
+    "Remaining real acceptance includes score/timer, access refinements, further imported selected edits, final repeatability and deployed browser verification."
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol17: explicit account OTPM completion-cap adaptation, exact enclosing Method/root parent feedback, imported Methods synchronization regression",
+    "source": "protocol18: adaptive output cap, exact native parent/binding feedback, version-correct validation invalidation",
     "nodeTests": 85,
-    "browserTests": 88,
+    "browserTests": 89,
     "productionBuild": "pass"
   },
   "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",

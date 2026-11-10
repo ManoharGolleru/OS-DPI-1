@@ -243,6 +243,10 @@ export async function authorInterface({session,request,selected=null,model=MODEL
         :{ok:false,error:e.message,...(name==="edit"?{instruction:"The entire edit batch was rolled back. No new refs were created. Correct and resend the batch; do not remove refs from the failed batch."}:{})};audit.push({tool:name,ok:false});}
       if(result?.accepted){onDiagnostic({stage:"tool",round:round+1,tool:toolName,validArguments:true,ok:true,
         details:{arguments:args,result:{accepted:true,summary:result.summary,checked:result.checked,presentation:result.presentation}}});return result;}
+      // Validation describes the document version it checked. A successful
+      // mutation invalidates it; read-only inspections must not erase it.
+      const changedSections=SECTIONS.filter(s=>beforeSections[s]!==JSON.stringify(session.design[s]));
+      if(stagedResult && changedSections.length)lastValidation=undefined;
       const text=JSON.stringify(redact(result));
       const outcome={tool:toolName,ok:result?.ok!==false,staged:result?.staged,error:result?.error,errors:result?.errors,
         created:result?.created,pending:result?.pending,presentation:result?.presentation,
@@ -259,7 +263,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
           interactions:result?.interactions?.filter(t=>!t.ok).slice(0,3).map(t=>({name:String(t.name||"").slice(0,40),error:String(t.error||"").slice(0,180)})),
           instruction:result?.instruction?.slice(0,300)};
       onDiagnostic({stage:"tool",round:round+1,tool:toolName,validArguments:!!args,ok:result?.ok!==false&&!result?.errors?.length,
-        errors:result?.errors?.length || (result?.error?1:0),sections:SECTIONS.filter(s=>beforeSections[s]!==JSON.stringify(session.design[s])),resultBytes:text.length,details:{arguments:args,result}});
+        errors:result?.errors?.length || (result?.error?1:0),sections:changedSections,resultBytes:text.length,details:{arguments:args,result}});
       group.push({role:"tool",tool_call_id:call.id,content:JSON.stringify(compactFeedback(redact(result),{catalog:session.catalog}))});
     }
     transcript.push(group);

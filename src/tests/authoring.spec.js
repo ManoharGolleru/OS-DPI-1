@@ -738,3 +738,32 @@ test('repeated or malformed output-size limits stop without altering the current
   expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');expect(await page.evaluate(()=>fixture.Globals.layout.children[0].children)).toEqual([]);
  }
 });
+
+test('native validation survives inspections but is invalidated by a successful repair',async({page})=>{
+ const method={className:'Method',ref:'customAccess',props:{Name:'Custom access',Active:false,Pattern:'NullPattern'}};
+ const checks=[{name:'opening',steps:[],expect:{$Status:'Ready'}},{name:'choose',steps:[{target:'choice'}],expect:{$Status:'Done'}}];
+ const {requests}=await setup(page,[
+  ['edit',{operations:[{op:'insert',parent:'page',nodes:[method]}]}],
+  ['inspect',{classes:['Method']}],
+  ['edit',{operations:[{op:'update',target:'page',props:{background:''}}]}],
+  ['inspect',{classes:['Method']}],
+  ['edit',{operations:[{op:'insert',parent:'method',nodes:[method]}]}],
+  ['inspect',{classes:['Method']}],
+  ['edit',{operations:[
+   {op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Status'}},{className:'Button',ref:'choice',props:{label:'Choose'}}]},
+   {op:'bind',target:'init',rules:[{updates:{$Status:"'Ready'"}}]},
+   {op:'bind',target:'choice',rules:[{updates:{$Status:"'Done'"}}]},
+  ],tests:[{...checks[0],expect:{$Status:'Wrong'}},checks[1]],summary:'Created the activity.'}],
+  ['inspect',{classes:['Display']}],
+  ['edit',{operations:[],tests:checks,summary:'Created and checked the activity.'}],
+ ]);
+ await generate(page,'Create a button activity with a custom access method.');
+ expect(requests).toHaveLength(9);
+ const tasks=requests.map(r=>JSON.parse(r.messages[1].content));
+ for(const index of [1,2,3,4])expect(tasks[index].lastValidation.error).toContain('Method is not a child of Page');
+ expect(tasks[5].lastValidation).toBeUndefined();expect(tasks[6].lastValidation).toBeUndefined();
+ for(const index of [7,8]){
+  expect(tasks[index].lastValidation).toMatchObject({round:7,ok:false,interactions:[{name:'opening'}]});
+  expect(tasks[index].lastValidation.error).toBeUndefined();
+ }
+});
