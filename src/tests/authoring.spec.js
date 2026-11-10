@@ -679,3 +679,29 @@ test('AI undo refuses to erase a later manual content id',async({page})=>{
  await page.getByTestId('author-undo').click();await expect(page.getByTestId('author-error')).toContainText('newer manual changes');
  expect(await page.evaluate(()=>fixture.Globals.data.contentRows[0].id)).toBe('manual-id');
 });
+
+
+test('a staged generic board can supply its final checks and submit without a dummy edit',async({page})=>{
+ const {requests}=await setup(page,[['edit',{operations:[
+  {op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Score'}},{className:'Button',ref:'add',props:{label:'Add 1'}}]},
+  {op:'bind',target:'init',rules:[{updates:{$Score:'0'}}]},
+  {op:'bind',target:'add',rules:[{updates:{$Score:'increment(1)'}}]},
+ ]}],['edit',{operations:[],summary:'Created the score activity.',tests:[{steps:[],expect:{$Score:0}},{steps:[{target:'add'}],expect:{$Score:1}}]}]]);
+ await generate(page,'Create a score activity with Add 1.');expect(requests).toHaveLength(2);await buttons(page);
+ await page.locator('#UI').getByRole('button',{name:'Add 1',exact:true}).click();await expect(page.locator('#UI .display')).toContainText('1');
+});
+
+test('an empty edit cannot manufacture a completed board',async({page})=>{
+ await setup(page,[['edit',{operations:[],summary:'Done.'}],['finish',{summary:'Done.'}],['finish',{summary:'Done.'}]]);
+ await page.getByTestId('author-request').fill('Create an activity.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
+ expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');expect(await page.evaluate(()=>fixture.Globals.layout.children[0].children.length)).toBe(0);
+ await expect(page.getByTestId('author-error')).toBeVisible();
+});
+
+
+test('requested native timer wiring is supplied before the first provider request',async({page})=>{
+ const {requests}=await setup(page,[async route=>route.fulfill({status:401,json:{error:{message:'Synthetic authentication stop before model execution'}}})]);
+ await page.getByTestId('author-request').fill('Create a score activity with a two-second timer.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
+ expect(requests).toHaveLength(1);const guide=requests[0].messages[0].content;
+ expect(guide).toContain('RELEVANT NATIVE WIRING');expect(guide).toContain('@delay.Key');expect(guide).toContain('under the method section');expect(guide).toContain('AND one trailing space');
+});

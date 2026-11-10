@@ -14,17 +14,17 @@ const definitions={
   test:object({name:string,initial:states,steps:array(ref("step")),expect:states}),
 };
 const operationSchemas={
-  insert:object({op:tag("insert"),parent:string,className:string,ref:nullable({...string,description:"NEW meaningful alias such as foodWords. Do not guess numeric refs like n10; they may already exist. null if unused."}),props:fields,index:nullable(integer)}),
-  rows:object({op:tag("rows"),rows:array(fields),defaults:fields,index:nullable(integer)}),
+  insert:object({op:tag("insert"),parent:string,className:string,ref:nullable({...string,description:"NEW meaningful alias such as foodWords. Do not guess numeric refs like n10; they may already exist. null if unused."}),props:fields,index:nullable({...integer,description:"Position among destination children/rows, not the operation number. null appends; use null unless moving to a specific position."})}),
+  rows:object({op:tag("rows"),rows:array(fields),defaults:fields,index:nullable({...integer,description:"Position among destination children/rows, not the operation number. null appends; use null unless moving to a specific position."})}),
   update:object({op:tag("update"),target:string,props:fields,unset:array(string)}),
-  move:object({op:tag("move"),target:string,parent:string,index:nullable(integer)}),
+  move:object({op:tag("move"),target:string,parent:string,index:nullable({...integer,description:"Position among destination children/rows, not the operation number. null appends; use null unless moving to a specific position."})}),
   remove:object({op:tag("remove"),target:string}),
   bind:object({op:tag("bind"),target:string,rules:array(ref("rule")),mode:{type:"string",enum:["merge","replace"]}}),
 };
 export const AUTHORING_EXAMPLE_TOPICS=["keyboard","speech","navigation","state","access","timer","media"];
 const commandSchemas={
   inspect:object({name:tag("inspect"),target:nullable({...string,description:"Existing ref or page/layout/actions/method/pattern/cues/content/functions/media. Use classes for class names."}),classes:{...array(string),description:"Registered classes whose native property/child schemas you need."},example:nullable({type:"string",enum:AUTHORING_EXAMPLE_TOPICS,description:"Canonical native wiring notes; choose a topic, never write a tutorial here."}),offset:integer,limit:{...integer,description:"Child count 1–100, not a byte/token limit."},depth:{...integer,description:"Child-tree depth 0–5."}}),
-  edit:object({name:tag("edit"),operations:array(ref("operation")),tests:nullable(array(ref("test"))),title:nullable(string),summary:nullable(string)}),
+  edit:{description:"Stage native operations; use operations:[] with tests/summary to validate and submit an already staged draft without inventing a new edit.",...object({name:tag("edit"),operations:array(ref("operation")),tests:nullable(array(ref("test"))),title:nullable(string),summary:nullable(string)})},
   recipe:{description:"Complete keyboard fragment: Display, keys, Space, Backspace, Clear, Speak, Speech and actions. Do not add these separately before calling recipe.",...object({name:tag("recipe"),recipe:tag("keyboard"),parent:nullable(string),backspace:nullable({type:"boolean"}),keyRows:nullable(array(string)),color:nullable(string),displayPosition:nullable({type:"string",enum:["top","bottom"]}),title:nullable(string),summary:nullable(string)})},
   check:object({name:tag("check"),tests:nullable(array(ref("test")))}),
   finish:object({name:tag("finish"),title:nullable(string),summary:string,question:nullable(string)}),
@@ -32,7 +32,7 @@ const commandSchemas={
 definitions.operation={anyOf:Object.values(operationSchemas)};
 definitions.command={anyOf:Object.values(commandSchemas)};
 export const AUTHORING_RESPONSE_FORMAT={type:"json_schema",json_schema:{name:"native_authoring",strict:true,schema:{...object({command:ref("command")}),$defs:definitions}}};
-export const AUTHORING_WIRE_GUIDE='Return one JSON command matching the response schema. Insert ONE native node per operation: parent, className, ref, props; insert parents before children and use their refs as parent. props/defaults/rows/data use arrays of {key,value}. Each row is one such array. Bind rules use updates:[{state,expression}]; expression is native formula text, including quotes for literal text. Tests use initial/expect:[{state,value}] with literal runtime values, not formulas. Use null for unused optional fields, [] for empty lists. tests:null preserves previous checks; tests:[] clears them. Inspect native wiring with example topic keyboard/speech/navigation/state/access/timer/media; use classes for property schemas and target for actual object refs or sections. No Markdown, tool-call tags, or JSON encoded inside strings.';
+export const AUTHORING_WIRE_GUIDE='Return one JSON command matching the response schema. Insert ONE native node per operation: parent, className, ref, props; insert parents before children and use their refs as parent. props/defaults/rows/data use arrays of {key,value}. Each row is one such array. Bind rules use updates:[{state,expression}]; expression is native formula text, including quotes for literal text. Tests use initial/expect:[{state,value}] with literal runtime values, not formulas. Use index:null to append to a parent, never the overall operation number. Use null for unused optional fields, [] for empty lists. tests:null preserves previous checks; tests:[] clears them. Inspect native wiring with example topic keyboard/speech/navigation/state/access/timer/media; use classes for property schemas and target for actual object refs or sections. No Markdown, tool-call tags, or JSON encoded inside strings.';
 
 const assert=(condition,message)=>{if(!condition)throw new Error(`Invalid authoring response: ${message}`);};
 const isObject=value=>value!==null&&typeof value==="object"&&!Array.isArray(value);
