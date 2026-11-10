@@ -27,7 +27,7 @@
     <label>Model <select id="model"></select></label>
     <label>Attempts <input id="attempts" type="number" min="1" max="5" step="1" value="5" required></label>
     <label>Temperature <input id="temperature" type="number" min="0" max="2" step="0.1" value="1" required></label>
-    <label>Reasoning effort <select id="effort"><option value="low">Low</option><option value="medium">Medium</option></select></label>
+    <label>Reasoning effort <select id="effort"><option value="none">None (Qwen only)</option><option value="low" selected>Low</option><option value="medium">Medium</option></select></label>
     <label>Task <select id="task"><option value="keyboard">QWERTY keyboard</option><option value="custom">Custom interface</option></select></label>
     <label>Request <textarea id="request" required></textarea></label>
     <label><input id="payloads" type="checkbox"> Include request and tool payloads in evidence (contains submitted/generated board text)</label>

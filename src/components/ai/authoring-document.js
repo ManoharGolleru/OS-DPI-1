@@ -88,21 +88,28 @@ export class AuthoringDocument {
     this.refresh();
     this.baseline = this.diagnose();
   }
+  nextRef(occupied=this.refs) {
+    let ref;do{ref=`n${++this.sequence}`;}while(occupied.has(ref));return ref;
+  }
   refresh() {
-    this.refs = new Map();
-    this.parents = new Map();
-    const visit = (item,parent,section,depth=0) => {
-      assert(depth<80 && this.refs.size<6000,"The design exceeds the native editor safety limit.");
-      assert(object(item), "A native component or content row must be an object.");
-      if (!item._ref) item._ref = item.id || `n${++this.sequence}`;
-      assert(!this.refs.has(item._ref), `Duplicate editing reference: ${item._ref}`);
-      this.refs.set(item._ref,item);
-      this.parents.set(item._ref,{parent,section});
-      if(section!=="content")for (const child of item.children || []) visit(child,item,section,depth+1);
+    const records=[];
+    const visit=(item,parent,section,depth=0)=>{
+      assert(depth<80&&records.length<6000,"The design exceeds the native editor safety limit.");
+      assert(object(item),"A native component or content row must be an object.");
+      records.push({item,parent,section});
+      if(section!=="content")for(const child of item.children||[])visit(child,item,section,depth+1);
     };
-    for (const name of SECTIONS) {
-      if (name === "content") for (const row of this.design.content || []) visit(row,null,name);
-      else if (this.design[name]) visit(this.design[name],null,name);
+    for(const section of SECTIONS){
+      if(section==="content")for(const row of this.design.content||[])visit(row,null,section);
+      else if(this.design[section])visit(this.design[section],null,section);
+    }
+    // Reserve imported identities before allocating any anonymous reference.
+    const occupied=new Set(records.map(({item})=>item._ref||item.id).filter(Boolean));
+    this.refs=new Map();this.parents=new Map();
+    for(const {item,parent,section}of records){
+      if(!item._ref)item._ref=item.id||this.nextRef(occupied);
+      assert(!this.refs.has(item._ref),`Duplicate editing reference: ${item._ref}`);
+      this.refs.set(item._ref,item);this.parents.set(item._ref,{parent,section});
     }
   }
   find(ref) {
@@ -151,9 +158,10 @@ export class AuthoringDocument {
     }
     if(fields.Response) result.props.Response=spec.className;
     if(fields.CueType) result.props.CueType=spec.className;
-    result._ref=spec.ref || `n${++this.sequence}`;
+    result._ref=spec.ref || this.nextRef();
     assert(/^[A-Za-z][\w-]{0,80}$/.test(result._ref) && ![...SECTIONS,"page"].includes(result._ref), "Use a short unique reference, not a section name.");
-    assert(!this.refs.has(result._ref), `Reference already exists: ${result._ref}`);
+    const existing=this.refs.get(result._ref);
+    assert(!existing,`Reference already exists: ${result._ref} (${existing?.className || "data row"} ${existing?.props?.name || existing?.props?.Name || ""}). For a NEW component use a fresh meaningful ref such as scoreDisplay, or omit ref when no later operation targets it. Never guess the next n-number; existing refs remain valid update/parent targets.`);
     this.refs.set(result._ref,result); // children may refer to the new parent
     result.children=(spec.children || []).map(child=>this.prepare(child));
     return result;
@@ -185,7 +193,7 @@ export class AuthoringDocument {
             assert(op.defaults===undefined || object(op.defaults),"Data defaults must be an object of shared field values.");
             const inserted=op.rows.map(row=>{
               assert(object(row),"Each data row must be an object of scalar fields.");
-              return {...this.resolve(op.defaults || {}),...this.resolve(row),_ref:`n${++this.sequence}`};
+              return {...this.resolve(op.defaults || {}),...this.resolve(row),_ref:this.nextRef()};
             });
             this.design.content.splice(this.index(op.index,this.design.content.length),0,...inserted);
         } else if(op.op==="update") {

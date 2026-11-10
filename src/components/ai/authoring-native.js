@@ -284,7 +284,7 @@ export function keyboardIntentTests(session,request) {
   if(/\bclear\b/i.test(request)&&clear)tests.push({name:"Requested Clear behavior",steps:[...steps,{target:clear._ref},{target:clear._ref}],expect:{[displayState]:""}});
   if(/\bspeak\b/i.test(request)&&speak) {
     const speech=layout.find(n=>n.className==="Speech"&&session.design.actions.children.some(a=>a.props.origin===speak.props.name&&a.children.some(u=>u.className==="ActionUpdate"&&u.props.stateName===(n.props.stateName||"$Speak"))));
-    if(!speech)throw new Error("The Speak control has no matching Speech listener.");
+    if(!speech)throw new Error(`Speak control ${speak._ref} (${speak.props.name}) has no matching Speech listener. Bind THIS Button ref to update the stateName of a Speech component; inspect or remove an unused duplicate Speak control from this staged draft.`);
     tests.push({name:"Requested Speak binding",steps:[...steps,{target:speak._ref}],expect:{[speech.props.stateName||"$Speak"]:"hello world"}});
   }
   return tests;

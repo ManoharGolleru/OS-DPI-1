@@ -405,3 +405,24 @@ test('Method binding preserves an explicit native name and still enforces its na
  assert.throws(()=>s.edit([{ op: 'insert', parent: 'page', nodes: [{ className: 'Method', ref: 'wrongParent' }] },{op:'bind',target:'wrongParent',rules:[{updates:{$Score:'0'}}]}]),/Method is not a child of Page/);
  assert.deepEqual(s.snapshot(),before);
 });
+
+test('generated component and row references skip an existing model alias',()=>{
+ const s=session(),alias=`n${s.sequence+2}`;
+ s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref:alias,props:{label:'Keep'}},{className:'Display'},{className:'Display'}]}]);
+ assert.equal(s.find(alias).props.label,'Keep');
+ const nextAlias=`n${s.sequence+2}`;
+ s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref:nextAlias,props:{label:'Preserve'}}]},{op:'rows',rows:[{label:'One'},{label:'Two'},{label:'Three'}]}]);
+ assert.equal(s.find(nextAlias).props.label,'Preserve');assert.equal(s.design.content.length,3);assert.deepEqual(s.check().errors,[]);
+});
+test('imported identities are reserved before anonymous nodes receive editing references',()=>{
+ const design=structuredClone(empty);
+ design.layout.children[0].children=[node('Display'),{...node('Button',{name:'imported',label:'Keep'}),id:'n3'}];
+ const s=new AuthoringDocument(design,catalog);
+ assert.equal(s.find('n3').props.label,'Keep');assert.equal(s.find('page').children[0].className,'Display');
+ assert.notEqual(s.find('page').children[0]._ref,'n3');assert.deepEqual(s.check().errors,[]);
+});
+test('colliding new aliases identify the existing object and reject the entire batch with actionable guidance',()=>{
+ const s=session(),ref=s.find('page')._ref,before=s.snapshot();
+ assert.throws(()=>s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref,props:{label:'No'}}]}]),/Reference already exists:.*Page.*meaningful ref.*Nothing in this batch was applied/);
+ assert.deepEqual(s.snapshot(),before);
+});

@@ -58,6 +58,7 @@ async function main(){
   $("form").addEventListener("submit",async event=>{
     event.preventDefault();if(running)return;
     const request=$("request").value.trim(),model=$("model").value,count=Number($("attempts").value),includeBoardText=$("payloads").checked,temperature=Number($("temperature").value),reasoningEffort=$("effort").value;
+    if(reasoningEffort==="none"&&!model.startsWith("qwen/")){ $("status").textContent="No-reasoning mode is available only for Qwen.";return;}
     if(!request||!Number.isInteger(count)||count<1||count>5||!Number.isFinite(temperature)||temperature<0||temperature>2)return;
     running=true;stopRequested=false;archives.clear();$("results").replaceChildren();
     batch={version:1,source:"real Groq via existing aiToolTurn",model,temperature,reasoningEffort,task:$("task").value,requestedAttempts:count,
