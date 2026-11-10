@@ -28,6 +28,11 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
   }
   const data = await response.json().catch(() => ({}));
   const choice = data.choices?.[0];
+  const failed=typeof data.error?.failed_generation==="string"?data.error.failed_generation:"";
+  // Groq omits usage on rejected generations. Budget a full free-tier minute
+  // conservatively; this is NOT a claim that 8K tokens were actually charged.
+  const reportedTokens=data.usage?.total_tokens || (data.usage?.prompt_tokens||0)+(data.usage?.completion_tokens||0);
+  const unknownUsageBudget=!response.ok&&failed&&!reportedTokens?8000:0;
   const rate = {
     limit:Number(response.headers.get("x-ratelimit-limit-tokens") ?? NaN),
     remaining: Number(response.headers.get("x-ratelimit-remaining-tokens") ?? NaN),
@@ -38,19 +43,18 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
   };
   // Groq's CORS response may hide quota headers. In that case pace against
   // its documented 8K TPM free tier using measured, non-cached usage.
-  if(response.ok && !Number.isFinite(rate.remaining) && data.usage) {
-    const now=Date.now(),usage=data.usage;
+  if(!Number.isFinite(rate.remaining) && ((response.ok&&data.usage)||unknownUsageBudget)) {
+    const now=Date.now(),usage=data.usage || {};
     const charges=(recentUsage.get(model)||[]).filter(entry=>now-entry.at<60000);
-    charges.push({at:now,tokens:Math.max(0,(usage.prompt_tokens||0)-(usage.prompt_tokens_details?.cached_tokens||0))+(usage.completion_tokens||0)});
+    charges.push({at:now,tokens:unknownUsageBudget || Math.max(0,(usage.prompt_tokens||0)-(usage.prompt_tokens_details?.cached_tokens||0))+(usage.completion_tokens||0)});
     recentUsage.set(model,charges);
-    Object.assign(rate,{limit:8000,remaining:Math.max(0,8000-charges.reduce((sum,entry)=>sum+entry.tokens,0)),reset:"60s",source:"free-tier-local"});
+    Object.assign(rate,{limit:8000,remaining:Math.max(0,8000-charges.reduce((sum,entry)=>sum+entry.tokens,0)),reset:"60s",source:unknownUsageBudget?"free-tier-estimated":"free-tier-local"});
   } else rate.source="provider";
   rates.set(model,rate);
   const kind = response.status === 401 || response.status === 403 ? "auth"
     : response.status === 413 ? "request-size"
     : response.status === 429 ? /tokens per day|requests per day|\bTPD\b|\bRPD\b/i.test(data.error?.message||"")||rate.requestsRemaining===0?"daily-limit":"rate-limit"
     : data.error?.code==="json_validate_failed" ? "bad-response" : ["tool_use_failed","tool_use_required"].includes(data.error?.code) ? "tool-call" : "http";
-  const failed=typeof data.error?.failed_generation==="string"?data.error.failed_generation:"";
   const providerCode=["tool_use_failed","tool_use_required","json_validate_failed"].includes(data.error?.code)?data.error.code:"other";
   onDiagnostic({stage:"provider",status:response.status,code:response.ok?"ok":kind,providerCode:response.ok?undefined:providerCode,
     finishReason:["stop","tool_calls","length","content_filter"].includes(choice?.finish_reason)?choice.finish_reason:"unknown",
@@ -59,7 +63,7 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
     reasoningTokens:data.usage?.completion_tokens_details?.reasoning_tokens || 0,elapsedMs:Math.round(performance.now()-started),
     tokenLimit:Number.isFinite(rate.limit)?rate.limit:null,tokensRemaining:Number.isFinite(rate.remaining)?rate.remaining:null,
     requestsRemaining:Number.isFinite(rate.requestsRemaining)?rate.requestsRemaining:null,
-    maxTokens,reasoningEffort,temperature,quotaSource:rate.source,
+    maxTokens,reasoningEffort,temperature,quotaSource:rate.source,unreportedBudgetTokens:unknownUsageBudget,
     details:{protocol:"strict-json",responseSchemaFingerprint:diagnosticFingerprint(JSON.stringify(AUTHORING_RESPONSE_FORMAT)),...(response.ok?{command:choice?.message?.content}: {providerError:{
       type:data.error?.type,code:data.error?.code,param:data.error?.param,message:data.error?.message,
       ...(failed?{failedGeneration:{originalLength:failed.length,truncated:failed.length>2800,head:failed.slice(0,1400),tail:failed.length>1400?failed.slice(-1400):""}}:{}),
@@ -67,7 +71,7 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
   if(!response.ok) {
     const error = new AIError(kind, data.error?.message || `Groq returned HTTP ${response.status}.`);
     error.retryAfter = response.headers.get("retry-after");
-    error.rate = rate;error.usage=data.usage || {};
+    error.rate = rate;error.usage=data.usage || {};error.unknownUsageBudget=unknownUsageBudget;
     // Strict output can still fail provider validation. Decode only for a
     // precise correction; NEVER execute or recover rejected generations.
     if(kind==="bad-response"&&failed)try{decodeAuthoringResponse(failed);}catch(problem){error.repairHint=problem.message.slice(0,400);}

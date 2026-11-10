@@ -457,7 +457,7 @@ test('observed Groq required-tool failure is classified and repaired internally'
 
 test('opted-in provider failure details preserve malformed endings and scrub credentials',async({page})=>{
   const failed='{"operations":['+' '.repeat(3100)+'BROKEN_END gsk_synthetic_secret_123456789012345';
-  await setup(page,[async route=>route.fulfill({status:400,json:{error:{type:'invalid_request_error',code:'tool_use_failed',param:'tools',message:'Generated call did not match schema',failed_generation:failed}}}),
+  await setup(page,[async route=>route.fulfill({status:400,headers:{'x-ratelimit-remaining-tokens':'99999','access-control-expose-headers':'x-ratelimit-remaining-tokens'},json:{error:{type:'invalid_request_error',code:'tool_use_failed',param:'tools',message:'Generated call did not match schema',failed_generation:failed}}}),
     ['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard.'}],
   ]);
   await page.getByText('Model and checks',{exact:true}).click();
@@ -624,7 +624,7 @@ test('actual media-rich repository archive retains its sections and resource has
 
 test('strict-schema provider rejection gives precise bounded repair feedback without executing rejected JSON',async({page})=>{
   const failed=JSON.stringify({command:{name:'edit',operations:[{op:'insert',parent:null,className:'Button',ref:'mustNotExist',props:[],index:null}],tests:null,title:null,summary:null}});
-  const {requests}=await setup(page,[async route=>route.fulfill({status:400,json:{error:{code:'json_validate_failed',message:'Union inspect branch does not match',failed_generation:failed}}}),['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard.'}]]);
+  const {requests}=await setup(page,[async route=>route.fulfill({status:400,headers:{'x-ratelimit-remaining-tokens':'99999','access-control-expose-headers':'x-ratelimit-remaining-tokens'},json:{error:{code:'json_validate_failed',message:'Union inspect branch does not match',failed_generation:failed}}}),['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard.'}]]);
   await generate(page);
   expect(requests).toHaveLength(2);expect(JSON.stringify(requests[1].messages)).toContain('operations[0].parent has the wrong value type');
   expect(await page.evaluate(()=>fixture.walk(fixture.captureNative().layout).some(n=>n.props?.name==='mustNotExist'))).toBe(false);
@@ -636,4 +636,46 @@ test('charged truncated structured responses count toward the request budget',as
   await page.getByTestId('author-request').fill('Create an activity.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
   expect(requests).toHaveLength(1);await expect(page.getByTestId('author-error')).toContainText('token budget');
   expect(await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()))).toBe(before);
+});
+
+
+test('rejected generations with unknown usage pace conservatively and remain cancellable',async({page})=>{
+ const {requests}=await setup(page,[async route=>route.fulfill({status:400,json:{error:{code:'json_validate_failed',message:'Failed JSON',failed_generation:'{"command":'}}})]);
+ const before=await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()));
+ await page.getByText('Model and checks',{exact:true}).click();await page.getByTestId('author-diagnostics').check();
+ await page.getByTestId('author-request').fill('Create a counting activity.');await page.getByTestId('author-run').click();
+ await expect(page.getByTestId('author-status')).toContainText('Pacing requests');
+ const provider=await page.evaluate(()=>fixture.panel.diagnostics.report.events.find(e=>e.stage==='provider'));
+ expect(provider).toMatchObject({promptTokens:0,completionTokens:0,unreportedBudgetTokens:8000,quotaSource:'free-tier-estimated'});
+ await page.getByTestId('author-cancel').click();await page.waitForFunction(()=>!fixture.panel.busy);
+ expect(requests).toHaveLength(1);expect(await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()))).toBe(before);
+});
+
+
+test('fingerprints preserve user data identities and omit only native tree identities',async({page})=>{
+ await setup(page);
+ const result=await page.evaluate(()=>{
+  const f=fixture,original=f.emptyNative();original.content=[{id:'row-id',className:'Display',label:'Keep'}];original.extra={id:'extra-id'};original.layout.props.id='property-id';
+  const before=f.fingerprint(original),nodeOnly=structuredClone(original);nodeOnly.layout.id='other-node';nodeOnly.layout.children[0]._ref='other-ref';
+  return {nodeIdentityIgnored:f.fingerprint(nodeOnly)===before,changes:[['content',0,'id'],['extra','id'],['layout','props','id']].map(path=>{const changed=structuredClone(original);let target=changed;for(const key of path.slice(0,-1))target=target[key];target[path.at(-1)]='manual-id';return f.fingerprint(changed)!==before;}),topics:Object.keys(f.examples()).sort(),wireTopics:[...f.AUTHORING_EXAMPLE_TOPICS].sort()};
+ });
+ expect(result.nodeIdentityIgnored).toBe(true);expect(result.changes).toEqual([true,true,true]);expect(result.topics).toEqual(result.wireTopics);
+});
+
+test('manual content id changes during generation are kept in memory and storage',async({page})=>{
+ let release,requested;const wait=new Promise(r=>release=r),seen=new Promise(r=>requested=r);
+ await setup(page,[async route=>{requested();await wait;await route.fulfill({json:toolReply('recipe',{name:'keyboard',summary:'Created keyboard.'})});}]);
+ await page.evaluate(async()=>{const f=fixture;f.Globals.data.contentRows=[{id:'original-id',label:'Keep'}];await f.db.write('content',f.Globals.data.contentRows);});
+ await page.getByTestId('author-request').fill('Create a QWERTY keyboard.');await page.getByTestId('author-run').click();await seen;
+ await page.evaluate(async()=>{const f=fixture;f.Globals.data.contentRows[0].id='manual-id';await f.db.write('content',f.Globals.data.contentRows);f.Globals.state.update();});release();
+ await page.waitForFunction(()=>!fixture.panel.busy);await expect(page.getByTestId('author-error')).toContainText('manual changes');
+ const after=await page.evaluate(async()=>{const f=fixture,d=await f.db.dbPromise;return {name:f.db.designName,id:f.Globals.data.contentRows[0].id,saved:(await d.getAllFromIndex('store5','by-name','original')).find(r=>r.type==='content').data[0].id};});
+ expect(after).toEqual({name:'original',id:'manual-id',saved:'manual-id'});
+});
+
+test('AI undo refuses to erase a later manual content id',async({page})=>{
+ await setup(page);await generate(page);
+ await page.evaluate(async()=>{const f=fixture;f.Globals.data.contentRows[0].id='manual-id';await f.db.write('content',f.Globals.data.contentRows);f.Globals.state.update();});
+ await page.getByTestId('author-undo').click();await expect(page.getByTestId('author-error')).toContainText('newer manual changes');
+ expect(await page.evaluate(()=>fixture.Globals.data.contentRows[0].id)).toBe('manual-id');
 });

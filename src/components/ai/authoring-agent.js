@@ -11,7 +11,7 @@ Return ONE JSON command matching the response schema. ${AUTHORING_WIRE_GUIDE}
 Use native schemas to choose className and property names. Insert parents before their children using declared refs; each insert creates ONE component. For new refs choose meaningful unused aliases like scoreDisplay, not guessed n-numbers. Names/keys are generated. @alias.name and @alias.Key reference generated values. Failed atomic edits apply nothing. Rejected submission KEEPS successfully staged edits: correct only remaining checks, never repeat inserts. Inspect only missing schemas/objects.
 Initialize requested states with bind target init. init is an EVENT, never a Page/Stack or new Method. Bind each Button/Grid ref to rules. Each rule is first-match; condition "" is unconditional. Button events provide #label and #name, not #state or click/active values. Combine related updates. ALL expressions read pre-action state, then apply together: status after increment tests $Score+1. Expressions are strings; use single-quoted literal text inside expressions, e.g. 'Ready', to avoid JSON escaping. Prefer native add_word/add_letter instead of manual text concatenation. Do not add unrequested states.
 One Page holds native containers. Grid renders vocabulary/data rows matching child GridFilters; it does not contain Buttons. Stack.columns tiles child Buttons. A GridFilter has field #grid, operator equals, value expression 'food'; rows defaults grid food supplies matching data. TabControl contains TabPanels with unique names and navigates directly. Speech belongs on Page and watches $Speak; Speak binds $Speak expression $Display under condition $Display. Clear binds $Display expression ''. Existing functions include add_word(#label), add_letter(#label), replace_last_letter(''). Inspect functions/access/navigation/media when needed. Use uploaded media and actual native keys; times are seconds. Never invent voice IDs.
-When creating a standard QWERTY keyboard, use recipe first with recipe keyboard, backspace true and keyRows null; then use ordinary edits for requested refinements. This saves 26 repetitive rows/actions. Other interfaces use generic native edits and any registered component.
+When creating a standard QWERTY keyboard, use recipe first with recipe keyboard, backspace true and keyRows null; then use ordinary edits for requested refinements. The recipe creates the COMPLETE editable fragment: message Display, 26 letter keys, Space, Backspace, Clear, Speak, speech listener and actions. Do not preinsert those pieces. It reuses an existing Speech listener when present. Other interfaces use generic native edits and any registered component.
 Include summary and title only when the entire request is satisfied. Generic NEW interactive boards require tests on edit/check: requested opening values with no initial overrides and representative actions using actual refs. Test expected values are runtime literals, never expression strings. The keyboard helper supplies tests. Native init runs first. Native checks never prove audible playback; ordinary Preview is the final functional evidence. Ask only essential missing information. Minimize requests/tokens for students' free-tier keys.`;
 
 function redact(value) {
@@ -56,7 +56,8 @@ const wait=(ms,signal)=>new Promise((resolve,reject)=>{
 /** Bounded local-tool loop. The last valid live board never changes during it. */
 export async function authorInterface({session,request,selected=null,model=MODELS[0][0],requireVisible,signal,onProgress=()=>{},onDiagnostic=()=>{},turn=aiToolTurn,history=[]}) {
   if(!MODELS.some(([id])=>id===model))throw new Error("Select a supported Groq authoring model.");
-  const transcript=[], audit=[], outcomes=[], usage={total_tokens:0,calls:0};
+  const transcript=[], audit=[], outcomes=[], usage={total_tokens:0,calls:0,unreported_budget_tokens:0};
+  const budgetUsed=()=>usage.total_tokens+usage.unreported_budget_tokens;
   const initialRefs=new Set(session.refs.keys()),inspectedClasses=new Set(),inspectedTargets=new Set();
   let proseFailures=0,protocolFailures=0,quotaRetries=0,sizeRetries=0,lastRate=lastAuthoringRate(model),waited=0,interactionTests=[],charsPerToken=3.5,smallContext=false,lastTokens=5000;
   const requiresSurface=requireVisible ?? !presentationReview(session.design,"",{requireVisible:true}).ok;
@@ -80,7 +81,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
   const rounds=12;
   for(let round=0;round<rounds;round++) {
     if(signal?.aborted)throw new DOMException("Cancelled","AbortError");
-    if(usage.total_tokens>=30000)throw new Error("Groq reached this request's token budget before completing the change. Your original board and last working copy are unchanged.");
+    if(budgetUsed()>=30000)throw new Error("Groq reached this request's token budget before completing the change. Your original board and last working copy are unchanged.");
     const mentioned=Object.entries(session.catalog).filter(([name,schema])=>{
       const label=schema.description?.split(/\s*[—–]\s*/)[0];
       return [name,label].filter(Boolean).some(term=>new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}s?\\b`,'i').test(request));
@@ -90,7 +91,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     for(const name of [...mentioned])if(session.catalog[name].children.length<=2)mentioned.push(...session.catalog[name].children);
     const known=[...new Set([...(selected&&session.refs.has(selected)?[session.find(selected).className]:["Page","Stack","Button","Display"]),...mentioned,...[...inspectedClasses].slice(-6)])];
     const task=requestContext(session,{request,selected,history,round,rounds});
-    task.tokenBudgetRemaining=30000-usage.total_tokens;
+    task.tokenBudgetRemaining=30000-budgetUsed();
     task.turnsRemaining=Math.min(rounds-round,Math.max(1,Math.floor(task.tokenBudgetRemaining/lastTokens)));
     task.created=[...session.refs.values()].filter(n=>!initialRefs.has(n._ref)&&session.parents.get(n._ref)?.section==="layout").slice(0,24)
       .map(n=>({ref:n._ref,className:n.className,name:n.props?.name || n.props?.Name || ""}));
@@ -150,6 +151,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
       // Truncated/invalid JSON can still be charged. Keep those requests in the
       // same budget and quota ledger as successfully decoded commands.
       usage.total_tokens+=e.usage?.total_tokens || 0;
+      usage.unreported_budget_tokens+=e.unknownUsageBudget || 0;
       if(e.rate)lastRate=e.rate;
       if(e.kind==="request-size"&&sizeRetries++<1){smallContext=true;charsPerToken=Math.max(1.5,charsPerToken*.8);round--;continue;}
       const delay=seconds(e.retryAfter || e.rate?.reset || "") || Number(/try again in ([0-9.]+)s/i.exec(e.message)?.[1]);

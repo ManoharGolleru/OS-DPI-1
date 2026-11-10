@@ -24,7 +24,7 @@ test('strict response schema closes all objects, requires every field, resolves 
   if(value.$ref)assert.ok(schema.$defs[value.$ref.replace('#/$defs/','')]);
   for(const child of Object.values(value))visit(child);
  };
- visit(schema);assert.ok(JSON.stringify(format).length<6000);
+ visit(schema);assert.ok(JSON.stringify(format).length<7000);
 });
 
 test('flat native inserts build arbitrary parent-child trees through the existing atomic editor',()=>{

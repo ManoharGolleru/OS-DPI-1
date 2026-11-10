@@ -75,8 +75,10 @@ export function documentSession(design, mediaNames=[]) {
   return new AuthoringDocument(design,nativeCatalog(),{expressionCheck:expressionError,mediaNames});
 }
 export function fingerprint(value) {
-  const sorted=v=>Array.isArray(v)?v.map(sorted):v&&typeof v==="object"?Object.fromEntries(Object.keys(v).filter(k=>k!=="id"&&k!=="_ref").sort().map(k=>[k,sorted(v[k])])):v;
-  return JSON.stringify(sorted(value));
+  const sorted=(v,scope="data")=>Array.isArray(v)?v.map(x=>sorted(x,scope)):v&&typeof v==="object"?Object.fromEntries(
+    Object.keys(v).filter(k=>scope!=="tree"||!["id","_ref"].includes(k)).sort().map(k=>[k,sorted(v[k],
+      scope==="document"&&Object.hasOwn(ROOTS,k)||scope==="tree"&&k==="children"?"tree":"data")])):v;
+  return JSON.stringify(sorted(value,"document"));
 }
 
 /** Optional reference material, not a gate on what the generic editor accepts. */
@@ -86,6 +88,7 @@ export function examples(topic="") {
     navigation:"TabControl has stateName ($view), children TabPanel with unique name and label. Tabs navigate natively, with no action needed. A Button can bind updates {$view:\"'tab_name'\"}. Nested Stacks control arrangement. Page contains one visible tree.",
     state:"Use Display stateName=$Score and Button name=answer. Bind answer condition '' updates {$Score:'increment(1)'}. Bind init updates {$Score:'0'}. Conditional rules run first-match; put specific conditions before an unconditional rule. Model-written JavaScript is never needed.",
     access:"Methods connect KeyHandler, PointerHandler, TimerHandler or SocketHandler to HandlerResponses. ResponderEmit fires an action whose origin is the enclosing Method.Name. Timer Interval and debounce are seconds. PatternManager.Key is referenced by Method.Pattern; NullPattern for pointer input. PatternSelector > GroupBy #ComponentName then #row scans multiple grids. Cues reference Cue.Key; use DefaultCue to reuse the default. Existing default methods include mouse, dwell and two-switch: inspect and update them instead of rebuilding.",
+    timer:"Add an active Method with Pattern 'NullPattern'. Inside it add a Timer ref delay with Interval 2, a KeyHandler with Signal keyup, and a TimerHandler with Signal timer. KeyHandler contains HandlerKeyCondition Key t and ResponderStartTimer. ResponderStartTimer.TimerName and TimerHandler.TimerName both reference @delay.Key (generated Key within this Method, NOT the Timer Name or ref). TimerHandler contains ResponderEmit. Responders are DIRECT handler children, not wrappers. Bind the enclosing Method ref to state updates, e.g. $Status expression 'Time up'. Initialize via bind target init. Interval is seconds. Timer retains original event fields; #eventType does not become timer.",
     speech:"Speech watches stateName ($Speak by default). A Speak button binds {$Speak:'$Display'} with condition '$Display'. Clear binds {$Display:\"''\"}. Character insertion uses add_letter(#label), words use add_word(#label). Backspace uses replace_last_letter(''). Expression string literals must be quoted. Preserve voiceURI, never invent a voice ID.",
     media:"Use only uploaded media filenames. Grid rows use symbol for an image and label for its caption; a Button has symbol. Audio watches its stateName; an ActionUpdate sets that state to a quoted audio filename. Inspect Audio, VSD and their native schemas for other media layouts. Do not invent filenames or URLs.",
   };

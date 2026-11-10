@@ -11,7 +11,7 @@ export function createDiagnostics({model, mode, selected, request = "",includeBo
   const fields = new Set(["stage", "status", "code", "finishReason", "promptTokens", "completionTokens",
     "reasoningTokens", "elapsedMs", "round", "tool", "validArguments", "ok", "errors", "warnings",
     "sections", "resultBytes", "before", "after", "controls", "persisted", "rendered", "copied",
-    "cachedTokens","tokenLimit","tokensRemaining","requestsRemaining","maxTokens","reasoningEffort","estimatedTokens","waitSeconds","quotaSource","providerCode","temperature"]);
+    "cachedTokens","tokenLimit","tokensRemaining","requestsRemaining","maxTokens","reasoningEffort","estimatedTokens","waitSeconds","quotaSource","providerCode","temperature","unreportedBudgetTokens"]);
   return {
     report,
     record(event) {
