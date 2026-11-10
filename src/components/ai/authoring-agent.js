@@ -65,7 +65,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
   const transcript=[], audit=[], outcomes=[], usage={total_tokens:0,calls:0,unreported_budget_tokens:0};
   const budgetUsed=()=>usage.total_tokens+usage.unreported_budget_tokens;
   const initialRefs=new Set(session.refs.keys()),inspectedClasses=new Set(),inspectedTargets=new Set();
-  let proseFailures=0,protocolFailures=0,quotaRetries=0,sizeRetries=0,lastRate=lastAuthoringRate(model),waited=0,interactionTests=[],charsPerToken=3.5,smallContext=false,lastTokens=5000,lastValidation;
+  let proseFailures=0,protocolFailures=0,quotaRetries=0,sizeRetries=0,completionRetries=0,completionCap=4000,lastRate=lastAuthoringRate(model),waited=0,interactionTests=[],charsPerToken=3.5,smallContext=false,lastTokens=5000,lastValidation;
   const requiresSurface=requireVisible ?? !presentationReview(session.design,"",{requireVisible:true}).ok;
   const submit=args=>{
     const checked=session.check();
@@ -98,6 +98,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     const known=[...new Set([...(selected&&session.refs.has(selected)?[session.find(selected).className]:["Page","Stack","Button","Display"]),...mentioned,...[...inspectedClasses].slice(-6)])];
     const task=requestContext(session,{request,selected,history,round,rounds});
     task.tokenBudgetRemaining=30000-budgetUsed();
+    if(completionCap<4000)task.commandTokenBudget=completionCap;
     task.turnsRemaining=Math.min(rounds-round,Math.max(1,Math.floor(task.tokenBudgetRemaining/lastTokens)));
     task.created=[...session.refs.values()].filter(n=>!initialRefs.has(n._ref)&&session.parents.get(n._ref)?.section==="layout").slice(0,24)
       .map(n=>({ref:n._ref,className:n.className,name:n.props?.name || n.props?.Name || ""}));
@@ -123,18 +124,18 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     // Keep complete assistant/tool groups together; never send an orphaned tool response.
     const messages=[{role:"system",content:GUIDE+relevantNativeHelp(request)+"\nEXISTING EXPRESSION FUNCTIONS (do not invent others): "+nativeExpressionReference().available.join(", ")+"\nRELEVANT NATIVE SCHEMAS (inspect any others):\n"+JSON.stringify(compactSchemas(session.catalog,known))},
       {role:"user",content:JSON.stringify(redact(task))},...transcript.slice(-2).flat()];
-    let maxTokens=4000;
+    let maxTokens=completionCap;
     const promptEstimate=()=>Math.ceil((JSON.stringify(toWireMessages(messages)).length+JSON.stringify(AUTHORING_RESPONSE_FORMAT).length)/charsPerToken);
     const estimateTokens=()=>promptEstimate()+maxTokens;
     if(estimateTokens()>7900){shrink();messages[1].content=JSON.stringify(redact(task));}
-    maxTokens=Math.min(maxTokens,Math.max(1500,7900-promptEstimate()));
+    maxTokens=Math.min(maxTokens,Math.max(Math.min(1500,completionCap),7900-promptEstimate()));
     // Drop older COMPLETE tool exchanges, never orphan individual tool messages.
     while(estimateTokens()>7900 && messages.length>3) {
       messages.splice(2,1);
       while(messages[2]?.role==="tool")messages.splice(2,1);
     }
     if(estimateTokens()>7900){shrink();messages[1].content=JSON.stringify(redact(task));}
-    maxTokens=Math.min(4000,Math.max(1500,7900-promptEstimate()));
+    maxTokens=Math.min(completionCap,Math.max(Math.min(1500,completionCap),7900-promptEstimate()));
     const estimate=estimateTokens();
     if(estimate>7900)throw new Error("This request exceeds the free Groq request budget. Select the part you want changed and describe a smaller step. Your board is unchanged.");
     const pause=lastRate && Number.isFinite(lastRate.remaining)&&lastRate.remaining<estimate?Math.max(0,Math.ceil(seconds(lastRate.reset)-(Date.now()-(lastRate.receivedAt||Date.now()))/1000)):0;
@@ -153,13 +154,20 @@ export async function authorInterface({session,request,selected=null,model=MODEL
       usage.calls++;
       onDiagnostic({stage:"request",round:round+1,estimatedTokens:estimate});
       // Strict output constrains syntax; native validation decides behavior.
-      response=await turn({model,messages,signal,maxTokens,onDiagnostic:event=>onDiagnostic({...event,round:round+1})});
+      response=await turn({model,messages,signal,maxTokens,
+        ...(completionCap<=1000&&model.startsWith("qwen/")?{reasoningEffort:"none"}:{}),
+        onDiagnostic:event=>onDiagnostic({...event,round:round+1})});
     }catch(e){
       // Truncated/invalid JSON can still be charged. Keep those requests in the
       // same budget and quota ledger as successfully decoded commands.
       usage.total_tokens+=e.usage?.total_tokens || 0;
       usage.unreported_budget_tokens+=e.unknownUsageBudget || 0;
       if(e.rate)lastRate=e.rate;
+      if(e.kind==="completion-limit" && e.completionLimit>=256 && e.completionLimit<completionCap && completionRetries++<1){
+        completionCap=Math.floor(e.completionLimit);
+        transcript.push([{role:"user",content:`Groq limits each response to ${completionCap} tokens for this account. Stage small complete edit commands across requests; keep summary null until all requested behavior is ready. Do not repeat successful edits.`}]);
+        round--;continue;
+      }
       if(e.kind==="request-size"&&sizeRetries++<1){smallContext=true;charsPerToken=Math.max(1.5,charsPerToken*.8);round--;continue;}
       const delay=seconds(e.retryAfter || e.rate?.reset || "") || Number(/try again in ([0-9.]+)s/i.exec(e.message)?.[1]);
       if(e.kind==="daily-limit")throw new Error("Your Groq daily quota is exhausted. Try again after the quota resets. Your board and last working copy are unchanged.");

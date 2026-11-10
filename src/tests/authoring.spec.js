@@ -705,3 +705,36 @@ test('requested native timer wiring is supplied before the first provider reques
  expect(requests).toHaveLength(1);const guide=requests[0].messages[0].content;
  expect(guide).toContain('RELEVANT NATIVE WIRING');expect(guide).toContain('@delay.Key');expect(guide).toContain('under the method section');expect(guide).toContain('AND one trailing space');
 });
+
+test('an explicit output-size rejection lowers the command cap and leaves room for Qwen JSON',async({page})=>{
+ const {requests}=await setup(page,[async route=>route.fulfill({status:429,json:{error:{message:"Request too large on output tokens per minute (OTPM): Limit 1000, Requested 1758. The request's expected output tokens exceed the enforced limit; reduce max_tokens."}}}),
+  ['recipe',{name:'keyboard',backspace:true,summary:'Created native keyboard.'}],
+ ]);
+ await page.getByText('Model and checks',{exact:true}).click();await page.getByTestId('author-model').selectOption('qwen/qwen3.8-27b');
+ await generate(page);
+ expect(requests).toHaveLength(2);expect(requests[0].max_completion_tokens).toBeGreaterThan(1000);
+ expect(requests[1]).toMatchObject({max_completion_tokens:1000,reasoning_effort:'none'});
+ expect(requests[1].messages.some(m=>m.content.includes('Stage small complete edit commands'))).toBe(true);
+ expect(await page.evaluate(()=>fixture.db.designName)).not.toBe('original');
+ const databaseOriginal=await page.evaluate(async()=>{const database=await fixture.db.dbPromise;return (await database.get('store5',['original','layout'])).data;});
+ expect(databaseOriginal.children[0].children).toEqual([]);
+});
+
+test('temporary output quota exhaustion is paced without reducing response size or reasoning',async({page})=>{
+ const {requests}=await setup(page,[async route=>route.fulfill({status:429,headers:{'retry-after':'0.1'},json:{error:{message:'Rate limit reached on output tokens per minute (OTPM): Limit 1000, Used 950, Requested 500. Try again in 0.1s.'}}}),
+  ['recipe',{name:'keyboard',backspace:true,summary:'Created native keyboard.'}],
+ ]);
+ await page.getByText('Model and checks',{exact:true}).click();await page.getByTestId('author-model').selectOption('qwen/qwen3.8-27b');await generate(page);
+ expect(requests).toHaveLength(2);expect(requests[1].max_completion_tokens).toBeGreaterThan(1000);expect(requests[1].reasoning_effort).toBe('medium');
+});
+
+test('repeated or malformed output-size limits stop without altering the current board',async({page})=>{
+ for(const limit of ['1000','unknown']){
+  const rejection=async route=>route.fulfill({status:429,json:{error:{message:`Request too large on output tokens per minute (OTPM): Limit ${limit}, Requested 1758. The request's expected output tokens exceed the enforced limit; reduce max_tokens.`}}});
+  const {requests}=await setup(page,[rejection,rejection]);
+  await page.getByText('Model and checks',{exact:true}).click();await page.getByTestId('author-model').selectOption('qwen/qwen3.8-27b');
+  await page.getByTestId('author-request').fill('Create a keyboard.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
+  await expect(page.getByTestId('author-error')).toBeVisible();expect(requests).toHaveLength(limit==='1000'?2:1);
+  expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');expect(await page.evaluate(()=>fixture.Globals.layout.children[0].children)).toEqual([]);
+ }
+});

@@ -1826,13 +1826,14 @@
     "Ordinary Preview and native roundtrip passes are recorded per attempt; isolated draft-ready status alone does not prove a working interface.",
     "Native speech dispatch was recorded in isolated replay browsers; audible playback was not independently measured.",
     "Local imported-grid visual requests failed despite native draft acceptance; computed-style verification caught unchanged blue buttons.",
-    "Remaining real acceptance includes score/timer, access refinements, further imported selected edits, final repeatability and deployed browser verification."
+    "Remaining real acceptance includes score/timer, access refinements, further imported selected edits, final repeatability and deployed browser verification.",
+    "Replacement-key account explicitly reported Qwen OTPM1000. Adaptive response cap and Qwen no-reasoning mode under that cap passed deterministic regressions but await distinct real-model validation."
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol16 checkpoint331b14b: object-first inspection with nested wiring retained, exact-ref feedback, bounded persistent validation and executable timer guidance",
-    "nodeTests": 84,
-    "browserTests": 85,
+    "source": "protocol17: explicit account OTPM completion-cap adaptation, exact enclosing Method/root parent feedback, imported Methods synchronization regression",
+    "nodeTests": 85,
+    "browserTests": 88,
     "productionBuild": "pass"
   },
   "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",

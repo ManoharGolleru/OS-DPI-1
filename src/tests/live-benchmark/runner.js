@@ -81,7 +81,7 @@ async function main(){
         controller=new AbortController();let timedOut=false;
         const timeout=setTimeout(()=>{timedOut=true;controller?.abort();},480000);
         try{
-          const result=await authorInterface({session,request,model,requireVisible:true,signal:controller.signal,turn:args=>aiToolTurn({...args,temperature,reasoningEffort}),
+          const result=await authorInterface({session,request,model,requireVisible:true,signal:controller.signal,turn:args=>aiToolTurn({temperature,reasoningEffort,...args}),
             onProgress:message=>{$("status").textContent=`Attempt ${i}/${count}: ${message}`;},
             onDiagnostic:event=>{diagnostic.record(event);draw(record,pre);}});
           if(controller.signal.aborted)throw new DOMException("Cancelled","AbortError");

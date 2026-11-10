@@ -51,8 +51,14 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
     Object.assign(rate,{limit:8000,remaining:Math.max(0,8000-charges.reduce((sum,entry)=>sum+entry.tokens,0)),reset:"60s",source:unknownUsageBudget?"free-tier-estimated":"free-tier-local"});
   } else rate.source="provider";
   rates.set(model,rate);
+  const errorMessage=String(data.error?.message||"");
+  const outputLimit=/output tokens per minute|\bOTPM\b/i.test(errorMessage) && /expected output tokens exceed|reduce max_tokens/i.test(errorMessage)
+    ? Number(/\bLimit\s+([\d,]+)/i.exec(errorMessage)?.[1]?.replaceAll(",","")) : NaN;
+  const requestedOutput=Number(/\bRequested\s+([\d,]+)/i.exec(errorMessage)?.[1]?.replaceAll(",",""));
+  const oversizedOutput=response.status===429 && Number.isFinite(outputLimit) && outputLimit>0 && requestedOutput>outputLimit;
   const kind = response.status === 401 || response.status === 403 ? "auth"
     : response.status === 413 ? "request-size"
+    : oversizedOutput ? "completion-limit"
     : response.status === 429 ? /tokens per day|requests per day|\bTPD\b|\bRPD\b/i.test(data.error?.message||"")||rate.requestsRemaining===0?"daily-limit":"rate-limit"
     : data.error?.code==="json_validate_failed" ? "bad-response" : ["tool_use_failed","tool_use_required"].includes(data.error?.code) ? "tool-call" : "http";
   const providerCode=["tool_use_failed","tool_use_required","json_validate_failed"].includes(data.error?.code)?data.error.code:"other";
@@ -64,6 +70,7 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
     tokenLimit:Number.isFinite(rate.limit)?rate.limit:null,tokensRemaining:Number.isFinite(rate.remaining)?rate.remaining:null,
     requestsRemaining:Number.isFinite(rate.requestsRemaining)?rate.requestsRemaining:null,
     maxTokens,reasoningEffort,temperature,quotaSource:rate.source,unreportedBudgetTokens:unknownUsageBudget,
+    ...(oversizedOutput?{completionLimit:outputLimit}:{}),
     details:{protocol:"strict-json",responseSchemaFingerprint:diagnosticFingerprint(JSON.stringify(AUTHORING_RESPONSE_FORMAT)),...(response.ok?{command:choice?.message?.content}: {providerError:{
       type:data.error?.type,code:data.error?.code,param:data.error?.param,message:data.error?.message,
       ...(failed?{failedGeneration:{originalLength:failed.length,truncated:failed.length>2800,head:failed.slice(0,1400),tail:failed.length>1400?failed.slice(-1400):""}}:{}),
@@ -72,6 +79,7 @@ export async function aiToolTurn({model, messages, signal, maxTokens = 3000, tem
     const error = new AIError(kind, data.error?.message || `Groq returned HTTP ${response.status}.`);
     error.retryAfter = response.headers.get("retry-after");
     error.rate = rate;error.usage=data.usage || {};error.unknownUsageBudget=unknownUsageBudget;
+    if(oversizedOutput)error.completionLimit=outputLimit;
     // Strict output can still fail provider validation. Decode only for a
     // precise correction; NEVER execute or recover rejected generations.
     if(kind==="bad-response"&&failed)try{decodeAuthoringResponse(failed);}catch(problem){error.repairHint=problem.message.slice(0,400);}

@@ -235,10 +235,14 @@ export class AuthoringDocument {
           if(target) {
             const nameField=actionNameFields.get(target.className);
             const initialization='For startup initialization use {op:"bind",target:"init",rules:[{updates:{$Score:"0"}}]}; do not create a Method for initialization.';
+            let enclosing=this.parents.get(target._ref)?.parent;
+            while(enclosing && enclosing.className!=="Method")enclosing=this.parents.get(enclosing._ref)?.parent;
             assert(nameField, ["Page","Stack"].includes(target.className)
               ? `${target.className} is a layout container, not an action event. ${initialization}`
               : ["Speech","Audio"].includes(target.className)
               ? `${target.className} listens to state ${target.props.stateName || this.catalog[target.className]?.props.stateName?.default}; it does not dispatch actions. Bind the input Button/Grid to update that state instead.`
+              : enclosing
+              ? `${target.className} does not dispatch native Actions. ResponderEmit dispatches its enclosing Method; use bind target "${enclosing._ref}".`
               : `${target.className} does not dispatch native Actions. Tabs and Radio navigate/select directly; bind a Button, Grid, VSD, Display or Method instead. ${initialization}`);
             if(!String(target.props[nameField] || "").trim())target.props[nameField]=this.unique(target._ref || target.className.toLowerCase());
           }
@@ -331,7 +335,10 @@ export class AuthoringDocument {
       if(!object(n)||!this.catalog[n.className]){issue(n,"className",`Unregistered component ${n?.className}.`);return;}
       nodes.push(n);
       const spec=this.catalog[n.className];
-      if(parent && !this.catalog[parent.className]?.children.includes(n.className))issue(n,"parent",`${n.className} is not a child of ${parent.className}.`);
+      if(parent && !this.catalog[parent.className]?.children.includes(n.className)){
+        const roots=Object.entries(ROOTS).filter(([,root])=>this.catalog[root]?.children.includes(n.className)).map(([section])=>section);
+        issue(n,"parent",`${n.className} is not a child of ${parent.className}.`+(roots.length?` Insert ${n.className} with parent ${roots.map(root=>JSON.stringify(root)).join(" or ")}.`:""));
+      }
       for(const [key,value] of Object.entries(n.props || {})) {
         const p=spec.props[key];
         if(!p){issue(n,key,`Unknown ${n.className} property '${key}'. Inspect its schema.`);continue;}

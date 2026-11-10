@@ -35,6 +35,18 @@ test('wide scalar rows remain inspectable within the response budget with explic
  for(const [key,value] of Object.entries(result.object.props))assert.equal(value,fields[key]);
  assert.equal(Object.keys(result.object.props).length+result.object.omittedProps.length,100);
 });
+test('rejected access edits identify actual native parent refs without accepting the wrong wiring',()=>{
+ const s=session(),before=s.snapshot();
+ assert.throws(()=>s.edit([{op:'insert',parent:'page',nodes:[{className:'Method'}]}]),/Insert Method with parent "method"/);assert.deepEqual(s.snapshot(),before);
+ s.edit([{op:'insert',parent:'method',nodes:[{className:'Method',ref:'activity',props:{Name:'Different native name',Active:true,Pattern:'NullPattern'},children:[{className:'KeyHandler',ref:'handler',props:{Signal:'keyup'},children:[{className:'ResponderEmit',ref:'emitter'}]}]}]}]);
+ const wired=s.snapshot();
+ for(const target of ['handler','emitter']){
+  assert.throws(()=>s.edit([{op:'bind',target,rules:[{updates:{$Status:"'Time up'"}}]}]),/use bind target "activity"/);
+  assert.deepEqual(s.snapshot(),wired);
+ }
+ s.edit([{op:'bind',target:'activity',rules:[{updates:{$Status:"'Time up'"}}]}]);
+ assert.equal(s.design.actions.children.at(-1).props.origin,'Different native name');
+});
 test('large staged-edit errors retain the actual corrections and native refs within the tool budget',()=>{
  const feedback={ok:false,staged:true,instruction:'Edits are kept; correct the bindings, do not repeat inserts.',
   errors:Array.from({length:30},(_,i)=>({ref:'action'+i,key:'action'+i+'.origin',message:'No matching named layout component. Bind the native component ref.'})),
