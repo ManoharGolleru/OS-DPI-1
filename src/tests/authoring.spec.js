@@ -1,4 +1,5 @@
 import {test,expect} from "@playwright/test";
+import {commandReply as toolReply,feedbackMessages} from "./structured-reply.js";
 import {writeFileSync} from "node:fs";
 test.beforeAll(async({browser})=>{
   const page=await browser.newPage();
@@ -9,7 +10,7 @@ test.beforeAll(async({browser})=>{
   await page.close();
 });
 
-const toolReply=(name,args,id="call")=>({choices:[{finish_reason:"tool_calls",message:{role:"assistant",content:null,tool_calls:[{id,type:"function",function:{name,arguments:JSON.stringify(args)}}]}}],usage:{total_tokens:600}});
+
 async function setup(page,replies=[['recipe',{name:'keyboard',backspace:true}],['finish',{title:'Typing board',summary:'Created a native keyboard.'}]]) {
   const errors=[],requests=[];
   page.on('pageerror',e=>{errors.push(e.message);console.error(e.stack);});
@@ -33,16 +34,16 @@ async function generate(page,text='Create a QWERTY keyboard with a display, Spea
 }
 async function buttons(page) {await page.evaluate(()=>fixture.Globals.state.update({editing:false}));await expect(page.locator('#UI button').first()).toBeVisible();}
 
-test('keyboard request uses real local tools, not whole-file JSON',async({page})=>{
+test('keyboard commands use strict structured output and native editing',async({page})=>{
   const {errors,requests}=await setup(page);
   const original=await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()));
   await generate(page);
   expect(requests).toHaveLength(2);
   expect(requests[0].model).toBe('openai/gpt-oss-120b');
-  expect(requests[0].tools.map(t=>t.function.name)).toContain('inspect');
-  expect(requests[0].response_format).toBeUndefined();
+  expect(requests[0].tools).toBeUndefined();
+  expect(requests[0].response_format).toMatchObject({type:'json_schema',json_schema:{strict:true}});
   const task=JSON.parse(requests[1].messages.find(m=>m.role==='user').content);
-  expect(requests[1].messages.some(m=>m.role==='tool') || task.lastResults.some(r=>r.tool==='recipe'&&r.ok&&r.instruction.includes('finish'))).toBe(true);
+  expect(feedbackMessages(requests[1]).length>0 || task.lastResults.some(r=>r.tool==='recipe'&&r.ok&&r.instruction.includes('finish'))).toBe(true);
   expect(await page.evaluate(()=>fixture.getAIModel('groq'))).toBe('openai/gpt-oss-120b');
   const stored=await page.evaluate(async()=>{
     const database=await fixture.db.dbPromise;
@@ -104,12 +105,12 @@ test('inspection combines selectors and retains schema knowledge across later tu
     ['inspect',{target:'functions'}],['inspect',{target:'content'}],
     ['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard.'}]]);
   await generate(page);
-  const first=JSON.parse(requests[1].messages.find(m=>m.role==='tool').content);
+  const first=JSON.parse(feedbackMessages(requests[1])[0].content);
   expect(first.object.className).toBe('Page');
   expect(first.schemas.TabControl.children).toContain('TabPanel');
   expect(first.example).toContain('TabControl');
   expect(requests[3].messages[0].content).toContain('"TabControl":{');
-  expect(requests[2].messages.some(m=>m.role==='tool'&&m.content.includes('replace_last_letter'))).toBe(true);
+  expect(feedbackMessages(requests[2]).some(m=>m.content.includes('replace_last_letter'))).toBe(true);
 });
 
 test('real activity omission of native init cannot pass the requested opening-state checks',async({page})=>{
@@ -118,7 +119,7 @@ test('real activity omission of native init cannot pass the requested opening-st
     {op:'bind',target:'add',rules:[{updates:{$Score:'increment(1)',$Status:"'Keep going'"}}]},
   ],summary:'Created counting activity.',tests:[{steps:[],expect:{$Score:0,$Status:'Ready'}},{steps:[{target:'add'}],expect:{$Score:1,$Status:'Keep going'}}]}],
   async(route,requests)=>{
-    const feedback=requests.at(-1).messages.filter(m=>m.role==='tool').map(m=>JSON.parse(m.content));
+    const feedback=feedbackMessages(requests.at(-1)).map(m=>JSON.parse(m.content));
     expect(feedback.at(-1)).toMatchObject({ok:false,staged:true});
     expect(feedback.at(-1).created.some(n=>n.ref==='add')).toBe(true);
     expect(feedback.at(-1).instruction).toContain('do not repeat');
@@ -230,7 +231,7 @@ test('deleting the selected piece can finish without losing its selection refere
     s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref:'removeMe',props:{label:'Remove'}},{className:'Button',ref:'keepMe',props:{label:'Keep'}}]}]);
     s.changes=[];
     let round=0;
-    return f.authorInterface({session:s,request:'Delete this selected button.',selected:'removeMe',turn:async()=>({message:{role:'assistant',tool_calls:[{id:'delete-'+round,type:'function',function:++round===1?{name:'edit',arguments:JSON.stringify({operations:[{op:'remove',target:'removeMe'}]})}:{name:'finish',arguments:JSON.stringify({summary:'Deleted the selected button.'})}}]}})});
+    return f.authorInterface({session:s,request:'Delete this selected button.',selected:'removeMe',turn:async()=>({message:f.decodeAuthoringResponse(f.commandReply(++round===1?'edit':'finish',round===1?{operations:[{op:'remove',target:'removeMe'}]}:{summary:'Deleted the selected button.'}).choices[0].message.content)})});
   });
   expect(result.design.layout.children[0].children.map(n=>n.props.label)).toEqual(['Keep']);
 });
@@ -288,7 +289,7 @@ test('invalid edit is corrected internally without manual repair',async({page})=
   const {errors,requests}=await setup(page,[['edit',{operations:[{op:'update',target:'page',props:{invented:1}}]}],['recipe',{name:'keyboard',backspace:true}],['finish',{summary:'Keyboard completed.'}]]);
   await generate(page);
   expect(requests).toHaveLength(3);
-  expect(requests[1].messages.some(m=>m.role==='tool'&&m.content.includes('Unknown Page property'))).toBe(true);
+  expect(feedbackMessages(requests[1]).some(m=>m.content.includes('Unknown Page property'))).toBe(true);
   expect(await page.evaluate(()=>fixture.Globals.layout.children[0].invented)).toBeUndefined();
   expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(26);expect(errors).toEqual([]);
 });
@@ -372,7 +373,7 @@ test('malformed and traversal archives leave storage untouched',async({page})=>{
 test('new external service connections require consent before applying',async({page})=>{
   const {errors}=await setup(page,[['inspect',{target:'method'}],async route=>{
     const target=await page.evaluate(()=>fixture.documentSession(fixture.captureNative()).design.method.children[0]._ref);
-    await route.fulfill({json:toolReply('edit',{operations:[{ op: 'insert', parent: target, nodes: [{ className: 'SocketHandler', props: { URL: 'wss://example.invalid/socket' } }] },{ op: 'insert', parent: 'page', nodes: [{ className: 'Button', props: { name: 'listen', label: 'Listen' } }] }]})});
+    await route.fulfill({json:toolReply('edit',{operations:[{ op: 'insert', parent: target, nodes: [{ className: 'SocketHandler', props: { URL: 'wss://example.invalid/socket' } }] },{ op: 'insert', parent: 'page', nodes: [{ className: 'Display', props: { stateName: '$Listen' } }] }]})});
   },['finish',{summary:'Added an external input connection.'}]]);
   await generate(page,'Add this external input connection');
   await expect(page.getByText('Review before applying')).toBeVisible();
@@ -423,13 +424,13 @@ test('native dwell, scanning and cues remain editable, rather than replaced by t
 
 test('plain model prose cannot claim a finished board without tool calls',async({page})=>{
   const plain=async(route)=>route.fulfill({json:{choices:[{finish_reason:'stop',message:{role:'assistant',content:'I created the keyboard and wired all its buttons.'}}],usage:{total_tokens:40}}});
-  const {errors,requests}=await setup(page,[plain,plain]);
+  const {errors,requests}=await setup(page,[plain,plain,plain]);
   await page.getByTestId('author-request').fill('Make a typing board.');
   await page.getByTestId('author-run').click();
   await page.waitForFunction(()=>!fixture.panel.busy);
-  await expect(page.getByTestId('author-error')).toContainText('explanation rather than interface edits');
-  expect(requests.length).toBe(2);
-  expect(requests.every(r=>r.tool_choice==='auto')).toBe(true);
+  await expect(page.getByTestId('author-error')).toContainText('Invalid structured authoring command');
+  expect(requests.length).toBe(3);
+  expect(requests.every(r=>r.tools===undefined&&r.tool_choice===undefined&&r.response_format.json_schema.strict)).toBe(true);
   expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
   expect(await page.evaluate(()=>fixture.Globals.layout.children[0].children.length)).toBe(0);
   expect(errors).toEqual([]);
@@ -464,8 +465,8 @@ test('opted-in provider failure details preserve malformed endings and scrub cre
   await generate(page,'Create a QWERTY keyboard with Speak, Clear, Space and Backspace.');
   const event=await page.evaluate(()=>fixture.panel.diagnostics.report.events.find(e=>e.stage==='provider'&&e.status===400));
   expect(event.providerCode).toBe('tool_use_failed');
-  expect(event.details).toMatchObject({toolChoice:'auto',providerError:{type:'invalid_request_error',code:'tool_use_failed',param:'tools',failedGeneration:{originalLength:failed.length,truncated:true}}});
-  expect(event.details.toolSchemaFingerprint).toMatch(/^[a-f0-9]{8}$/);
+  expect(event.details).toMatchObject({protocol:'strict-json',providerError:{type:'invalid_request_error',code:'tool_use_failed',param:'tools',failedGeneration:{originalLength:failed.length,truncated:true}}});
+  expect(event.details.responseSchemaFingerprint).toMatch(/^[a-f0-9]{8}$/);
   expect(event.details.providerError.failedGeneration.tail).toContain('BROKEN_END');
   expect(JSON.stringify(event)).not.toContain('gsk_');
 });
@@ -477,7 +478,7 @@ test('prose after staged edits asks for finish instead of accepting a claim',asy
   ]);
   await generate(page);
   expect(requests).toHaveLength(3);
-  expect(requests[2].messages.some(m=>m.role==='user'&&m.content.includes('Call check and then finish'))).toBe(true);
+  expect(requests[2].messages.some(m=>m.role==='user'&&m.content.includes('Return one JSON command matching the response schema'))).toBe(true);
 });
 
 test('failed interaction checks prevent finish until the actual actions are corrected',async({page})=>{
@@ -491,7 +492,7 @@ test('failed interaction checks prevent finish until the actual actions are corr
   ['finish',{summary:'Corrected the score.'}]]);
   await generate(page,'Make a button that adds one to score.');
   expect(requests).toHaveLength(5);
-  expect(requests[3].messages.some(m=>m.role==='tool'&&m.content.includes('native interaction checks still fail'))).toBe(true);
+  expect(feedbackMessages(requests[3]).some(m=>m.content.includes('native interaction checks still fail'))).toBe(true);
   await buttons(page);
   await page.locator('#UI').getByRole('button',{name:'Add',exact:true}).click();
   expect(await page.evaluate(()=>fixture.Globals.state.get('$Score'))).toBe(1);
@@ -524,7 +525,7 @@ test('content-only generation does not report success with empty Preview',async(
   ]);
   await generate(page,'Make a communication board with some buttons.');
   expect(requests.length).toBe(4);
-  const feedback=requests[2].messages.filter(m=>m.role==='tool').map(m=>m.content).join(' ');
+  const feedback=feedbackMessages(requests[2]).map(m=>m.content).join(' ');
   expect(feedback).toContain('no visible native output or controls');
   expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(28);
   expect(await page.locator('#UI button').count()).toBeGreaterThan(26);
@@ -539,7 +540,7 @@ test('incomplete QWERTY output requires repair before finish is accepted',async(
     ['finish',{title:'Keyboard',summary:'Finished full keyboard.'}],
   ]);
   await generate(page);
-  const feedback=requests[2].messages.filter(m=>m.role==='tool').map(m=>m.content).join(' ');
+  const feedback=feedbackMessages(requests[2]).map(m=>m.content).join(' ');
   expect(feedback).toContain('26 keys');
   expect(await page.evaluate(()=>fixture.Globals.data.contentRows.length)).toBe(26);
   expect(errors).toEqual([]);
@@ -618,4 +619,21 @@ test('actual media-rich repository archive retains its sections and resource has
   expect(after.exportHashes.sort()).toEqual(after.originalHashes.sort());
   expect(after.exportHashes).toHaveLength(11);
   expect(after.name).not.toBe(before.name);
+});
+
+
+test('strict-schema provider rejection gives precise bounded repair feedback without executing rejected JSON',async({page})=>{
+  const failed=JSON.stringify({command:{name:'edit',operations:[{op:'insert',parent:null,className:'Button',ref:'mustNotExist',props:[],index:null}],tests:null,title:null,summary:null}});
+  const {requests}=await setup(page,[async route=>route.fulfill({status:400,json:{error:{code:'json_validate_failed',message:'Union inspect branch does not match',failed_generation:failed}}}),['recipe',{name:'keyboard',backspace:true,summary:'Created keyboard.'}]]);
+  await generate(page);
+  expect(requests).toHaveLength(2);expect(JSON.stringify(requests[1].messages)).toContain('operations[0].parent has the wrong value type');
+  expect(await page.evaluate(()=>fixture.walk(fixture.captureNative().layout).some(n=>n.props?.name==='mustNotExist'))).toBe(false);
+});
+
+test('charged truncated structured responses count toward the request budget',async({page})=>{
+  const {requests}=await setup(page,[async route=>route.fulfill({json:{choices:[{finish_reason:'length',message:{role:'assistant',content:'{"command":'}}],usage:{prompt_tokens:26000,completion_tokens:4000,total_tokens:30000}}})]);
+  const before=await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()));
+  await page.getByTestId('author-request').fill('Create an activity.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
+  expect(requests).toHaveLength(1);await expect(page.getByTestId('author-error')).toContainText('token budget');
+  expect(await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()))).toBe(before);
 });

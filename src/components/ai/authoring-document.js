@@ -227,6 +227,8 @@ export class AuthoringDocument {
             const initialization='For startup initialization use {op:"bind",target:"init",rules:[{updates:{$Score:"0"}}]}; do not create a Method for initialization.';
             assert(nameField, ["Page","Stack"].includes(target.className)
               ? `${target.className} is a layout container, not an action event. ${initialization}`
+              : ["Speech","Audio"].includes(target.className)
+              ? `${target.className} listens to state ${target.props.stateName || this.catalog[target.className]?.props.stateName?.default}; it does not dispatch actions. Bind the input Button/Grid to update that state instead.`
               : `${target.className} does not dispatch native Actions. Tabs and Radio navigate/select directly; bind a Button, Grid, VSD, Display or Method instead. ${initialization}`);
             if(!String(target.props[nameField] || "").trim())target.props[nameField]=this.unique(target._ref || target.className.toLowerCase());
           }

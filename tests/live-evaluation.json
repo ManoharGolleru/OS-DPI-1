@@ -437,6 +437,170 @@
           ]
         }
       ]
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T02:54:07.115Z",
+      "protocol": 8,
+      "wireProtocol": "function-calls",
+      "temperature": 0.2,
+      "reasoningEffort": "medium",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "75c553faa02c4eb4c467c81b835e5f27c0aa5fd824fded182619f358c0b599fa",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 8,
+            "promptTokens": 22330,
+            "completionTokens": 9282,
+            "cachedTokens": 5120,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400,
+            200,
+            200,
+            200,
+            200,
+            200,
+            400,
+            200
+          ],
+          "finishReasons": [
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "unknown",
+            "tool_calls"
+          ]
+        }
+      ],
+      "ordinaryPreviewEvidence": null
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T02:54:07.749Z",
+      "protocol": 8,
+      "wireProtocol": "function-calls",
+      "temperature": 0.2,
+      "reasoningEffort": "medium",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "aec9695e7b70ec1f1bb5982dc8954337a6e1594f0d06265399428e2d2bfd15c6",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 8,
+            "promptTokens": 29092,
+            "completionTokens": 4370,
+            "cachedTokens": 4096,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            200,
+            400,
+            400,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "tool_calls",
+            "tool_calls",
+            "unknown",
+            "unknown",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls",
+            "tool_calls"
+          ]
+        }
+      ],
+      "ordinaryPreviewEvidence": null
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T03:23:10.379Z",
+      "protocol": 9,
+      "wireProtocol": "strict-json",
+      "temperature": 0.2,
+      "reasoningEffort": "medium",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "d51dfd7e741f152d64de84439380381bda85ee2d02dda72e12fd13ed8849eb9b",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 1,
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            400
+          ],
+          "finishReasons": [
+            "unknown"
+          ]
+        }
+      ],
+      "ordinaryPreviewEvidence": null
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T03:23:10.661Z",
+      "protocol": 9,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a restaurant communication interface with a message display and two tabs: Food with exactly Bread, Rice, Soup; Drinks with exactly Water, Juice, Milk. Tapping a word adds it and a space to the message without speaking. Switching tabs keeps the message. Add Speak and Clear. Speak says the current nonempty message only when pressed. Clear empties the message and is harmless when repeated.",
+      "sourceTraceSHA256": "ee0619011bc6736d2c4d5cbef4d5475289388ad4ecfe0cbdf01ce9b7ac3248d6",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "draft-ready",
+          "ordinaryPreviewAndExportReimport": "pass",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 18828,
+            "completionTokens": 9699,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "ordinaryPreviewEvidence": "qwen-restaurant-strict-protocol-9-attempt-1-preview/evidence.json"
     }
   ],
   "localComparison": {
@@ -546,5 +710,12 @@
     "Local imported-grid visual requests failed despite native draft acceptance; explicit computed-style verification caught unchanged blue buttons.",
     "Remaining real acceptance includes current broad creation, score/timer, access refinements, imported selected edits, final repeatability and deployed browser verification."
   ],
-  "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository."
+  "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
+  "currentRegressionValidation": {
+    "source": "Protocol 9 strict JSON replacement; later protocol10 precise schema repair under test",
+    "nodeTests": 78,
+    "browserTests": 75,
+    "productionBuild": "pass"
+  },
+  "modelSelection": "Incomplete: strict Qwen restaurant passed ordinary Preview once; OSS strict schema rejection is retained. Do not infer repeat reliability or final model ranking."
 }

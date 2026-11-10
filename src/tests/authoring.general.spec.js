@@ -1,4 +1,6 @@
 import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+import {unzipSync,strFromU8} from 'fflate';
 
 // These are deterministic native-runtime regressions, not provider-quality tests.
 test.beforeEach(async({page})=>{
@@ -21,6 +23,29 @@ test('real local-model quoted color mistake is rejected by the native color vali
   expect(result.error).toContain('Invalid native color');expect(result.unchanged).toBe(true);
   await preview(page);
   await expect(page.locator('#UI').getByRole('button',{name:'Color check',exact:true})).toHaveCSS('background-color','rgb(144, 238, 144)');
+});
+
+test('recorded real OSS partial restaurant cannot pass with a silent Speak control',async({page})=>{
+  const entries=unzipSync(readFileSync(new URL('../../tests/fixtures/gpt-oss-restaurant-incomplete.osdpi',import.meta.url)));
+  const design=Object.fromEntries(['layout','content','actions','method','pattern','cues'].map(k=>[k,JSON.parse(strFromU8(entries[k+'.json']))]));
+  const review=await page.evaluate(design=>fixture.reviewNativePresentation(fixture.documentSession(design)),design);
+  expect(review.ok).toBe(false);expect(review.errors.join(' ')).toContain('no native Speech listener');
+  expect(review.observed.initialVisibleGrids[0].labels).toEqual(['Bread','Rice','Soup','Water','Juice','Milk']);
+  expect(JSON.stringify(review.summary)).not.toContain('Bread');
+});
+
+test('recorded real OSS interface with zero actions still requires requested interaction checks',async({page})=>{
+  const recorded=JSON.parse(readFileSync(new URL('../../tests/fixtures/gpt-oss-restaurant-unbound-call.json',import.meta.url),'utf8'));
+  const result=await page.evaluate(async args=>{
+    const f=fixture,s=f.documentSession(f.emptyNative()),before=f.fingerprint(f.captureNative());let calls=0,rejected;
+    try{await f.authorInterface({session:s,request:'Create Food and Drinks tabs with a message display. Tapping a word adds it to the message. Add Speak and Clear.',
+      turn:async()=>{if(calls++)throw new Error('End recorded protocol replay');return {message:f.decodeAuthoringResponse(f.commandReply('edit',args).choices[0].message.content),usage:{total_tokens:500}};},
+      onDiagnostic:e=>{if(e.stage==='tool')rejected=e.details.result;}});}catch(error){return {calls,error:error.message,rejected,unchanged:f.fingerprint(f.captureNative())===before};}
+    return {calls,acceptedUnexpectedly:true};
+  },recorded.arguments);
+  expect(result.acceptedUnexpectedly).toBeUndefined();expect(result.calls).toBe(2);
+  expect(result.rejected).toMatchObject({ok:false,staged:true});
+  expect(result.rejected.instruction).toContain('no native action rules');expect(result.unchanged).toBe(true);
 });
 
 test('display-only native authoring produces ordinary Preview output',async({page})=>{
@@ -130,7 +155,8 @@ test('native tabs and Radio activate in Preview and preserve notes and voice',as
   });
   expect(result.review.ok).toBe(true);
   expect(result.review.summary).toMatchObject({radioOptions:2,tabButtons:2,populatedGrids:1,displays:0});
-  expect(result.unsupported.every(check=>!check.ok&&check.error.includes('Preview'))).toBe(true);
+  expect(result.unsupported[0]).toMatchObject({ok:true,states:{$View:'scorePanel'}});
+  expect(result.unsupported[1].ok).toBe(false);expect(result.unsupported[1].error).toContain('Preview');
   expect(result.notes).toEqual([{label:'Keep this note',ID:'saved-note'}]);
   expect(result.voices[0]).toMatchObject({stateName:'$ImportedVoice',voiceURI:'saved-device-voice'});
   await preview(page);
@@ -142,6 +168,25 @@ test('native tabs and Radio activate in Preview and preserve notes and voice',as
   await page.locator('#UI').getByRole('button',{name:'Score',exact:true}).click();
   await expect(page.locator('#UI .display')).toContainText('7');
   await expect(page.locator('#UI').getByRole('button',{name:'Water',exact:true})).toHaveCount(0);
+});
+
+test('native tab checks preserve explicit empty state and defer hidden nested tabs like Preview',async({page})=>{
+  const results=await page.evaluate(()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative());
+    s.edit([{op:'insert',parent:'page',nodes:[{className:'TabControl',ref:'outer',props:{stateName:'$View'},children:[
+      {className:'TabPanel',ref:'first',props:{name:'food',label:'Food'},children:[{className:'Display'}]},
+      {className:'TabPanel',ref:'second',props:{name:'other',label:'Other'},children:[{className:'TabControl',props:{stateName:'$Nested'},children:[{className:'TabPanel',props:{name:'inside',label:'Inside'},children:[{className:'Display'}]}]}]},
+    ]}]},{op:'bind',target:'init',rules:[{updates:{$View:"''"}}]}]);
+    const tests=f.exercise(s,[{steps:[],expect:{$View:'',$Nested:''}},{steps:[{target:'outer',label:'Other'}],expect:{$View:'other',$Nested:'inside'}}]);
+    f.installNative(s.snapshot());return {tests,review:f.reviewNativePresentation(s)};
+  });
+  expect(results.tests.every(t=>t.ok)).toBe(true);expect(results.review.ok).toBe(true);
+  await preview(page);await expect(page.locator('#UI .display')).toHaveCount(1);
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$View'))).toBe('');
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Nested'))).toBeUndefined();
+  await page.locator('#UI').getByRole('button',{name:'Other',exact:true}).click();
+  await expect(page.locator('#UI').getByRole('button',{name:'Inside',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>fixture.Globals.state.get('$Nested'))).toBe('inside');
 });
 
 test('surface checks reject empty, hidden and filtered-away output without replaying imported init on edits',async({page})=>{

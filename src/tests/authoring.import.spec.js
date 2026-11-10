@@ -1,3 +1,4 @@
+import {commandReply} from "./structured-reply.js";
 import {test,expect} from '@playwright/test';
 
 async function archive(page,label='Imported board',effects=true){
@@ -99,8 +100,7 @@ test.describe('inline import and new-board transactions',()=>{
     // this test does not count as real provider acceptance.
     await page.route('https://api.groq.com/**',async route=>{
       requests.push(route.request().postDataJSON());
-      await route.fulfill({headers:{'x-ratelimit-remaining-tokens':'99999'},json:{choices:[{finish_reason:'tool_calls',message:{role:'assistant',content:null,
-        tool_calls:[{id:'new-display',type:'function',function:{name:'edit',arguments:JSON.stringify({operations:[{op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Fresh'}}]}],title:'Fresh board',summary:'Created a fresh display.'})}}]}}],usage:{total_tokens:500}}});
+      await route.fulfill({headers:{'x-ratelimit-remaining-tokens':'99999'},json:commandReply('edit',{operations:[{op:'insert',parent:'page',nodes:[{className:'Display',props:{stateName:'$Fresh'}}]}],title:'Fresh board',summary:'Created a fresh display.'})});
     });
     await page.getByTestId('author-mode').selectOption('new');
     await page.getByTestId('author-request').fill('Create a blank message display.');
@@ -200,12 +200,11 @@ test.describe('inline import and new-board transactions',()=>{
       const source=f.captureNative();
       return {speeches:source.layout.children[0].children.filter(n=>n.className==='Speech').map(n=>n.id),cue:source.cues.children[0].id};
     });
-    await page.route('https://api.groq.com/**',async route=>route.fulfill({headers:{'x-ratelimit-remaining-tokens':'99999'},json:{choices:[{finish_reason:'tool_calls',message:{role:'assistant',content:null,
-      tool_calls:[{id:'voice-edit',type:'function',function:{name:'edit',arguments:JSON.stringify({operations:[
+    await page.route('https://api.groq.com/**',async route=>route.fulfill({headers:{'x-ratelimit-remaining-tokens':'99999'},json:commandReply('edit',{operations:[
         ...ids.speeches.map(target=>({op:'update',target,props:{voiceURI:'invented-voice',rate:0.8}})),
         {op:'update',target:ids.cue,props:{voiceURI:'invented-cue',Color:'blue'}},
         {op:'insert',parent:'page',nodes:[{className:'Speech',props:{stateName:'$Added',voiceURI:'invented-new-voice'}}]},
-      ],summary:'Updated colors and rate.'})}}]}}],usage:{total_tokens:500}}}));
+      ],summary:'Updated colors and rate.'})}));
     await page.getByTestId('author-request').fill('Change the cue color to blue and the speech rate to 0.8. Keep the voice.');
     await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
     const result=await page.evaluate(()=>{

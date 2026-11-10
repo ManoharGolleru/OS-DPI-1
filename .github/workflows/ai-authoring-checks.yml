@@ -24,7 +24,7 @@ jobs:
         working-directory: src
         run: npm install
       - name: Native document transaction tests
-        run: node --test tests/authoring.test.mjs
+        run: node --test tests/authoring*.test.mjs
       - name: Build application
         working-directory: src
         run: npm run build

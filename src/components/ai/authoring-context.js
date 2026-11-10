@@ -33,7 +33,9 @@ export function compactFeedback(result,{catalog={},limit=5000}={}) {
     short.tests={passed:result.interactions.filter(t=>t.ok).length,failed:result.interactions.filter(t=>!t.ok).length};
     short.interactions=result.interactions.filter(t=>!t.ok).slice(0,4).map(t=>({name:String(t.name||"").slice(0,80),ok:false,error:String(t.error||"").slice(0,400)}));
   }
-  if(result.presentation)short.presentation=result.presentation.summary || result.presentation;
+  if(result.presentation)short.presentation=result.presentation.observed
+    ? {summary:result.presentation.summary,observed:{initialVisibleGrids:result.presentation.observed.initialVisibleGrids.slice(0,3).map(g=>({...g,labels:g.labels.slice(0,8).map(label=>label.slice(0,60))}))}}
+    : result.presentation.summary || result.presentation;
   if(result.schemas){
     short.schemas={};short.omittedClasses=[];
     for(const [name,schema] of Object.entries(compactSchemas(catalog,Object.keys(result.schemas)))){
@@ -80,8 +82,10 @@ export function requestContext(session,{request,selected,history,round,rounds}) 
   const access=session.design.method.children.slice(0,6).map(n=>({ref:n._ref,name:n.props.Name,active:n.props.Active,pattern:n.props.Pattern,
     events:n.children.filter(c=>/Handler$/.test(c.className)).slice(0,5).map(c=>c.props.Signal),
     timers:n.children.filter(c=>c.className==="Timer").map(c=>({ref:c._ref,key:c.props.Key,seconds:c.props.Interval}))}));
+  const customStyles=[...session.refs.values()].flatMap(n=>Object.entries(n.props||{}).filter(([key,value])=>session.catalog[n.className]?.props[key]?.type==="css"&&String(value).trim()).map(([property,value])=>({ref:n._ref,className:n.className,property,characters:String(value).length})));
   return {request,selected,selection,previousRequests:history.slice(-2).map(h=>({request:String(h.request||"").slice(0,300),changes:String(h.changes||"").slice(0,300)})),outline,
     page:describeForModel(session,session.find("page"),{depth:1,limit:12,brief:true}),
     content:{count:session.design.content.length},media:{count:session.mediaNames.size,sample:[...session.mediaNames].slice(0,8)},stateLinks,access,
+    ...(customStyles.length?{customStyles:customStyles.slice(0,8),customStyleNote:"Existing native CSS can override appearance. Inspect these refs for visual edits; preserve unrelated rules."}:{}),
     availableComponents:Object.keys(session.catalog),turn:round+1,turnsRemaining:rounds-round};
 }

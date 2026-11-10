@@ -164,6 +164,23 @@ function nativeValue(session,item,key,states) {
     ? evaluateIsolated(String(value),states) : value;
 }
 
+// Mirror TabControl.template: the visible first panel and an explicitly empty
+// navigation state are different; define must not overwrite the latter.
+function selectedNativeTab(session,tabs,state) {
+  const key=nativeValue(session,tabs,"stateName",state.values);
+  const name=panel=>state.interpolate(String(nativeValue(session,panel,"name",state.values)||""));
+  let active=state.get(key);
+  if(!active&&tabs.children.length){active=name(tabs.children[0]);state.define(key,active);}
+  return tabs.children.find(panel=>tabs.children.length===1||name(panel)===active);
+}
+function initializeNativeTabs(session,item,state) {
+  if(item.className==="ModalDialog"&&!state.get(nativeValue(session,item,"stateName",state.values))&&![true,"true"].includes(nativeValue(session,item,"open",state.values)))return;
+  if(item.className==="TabControl"){
+    const panel=selectedNativeTab(session,item,state);
+    if(panel)initializeNativeTabs(session,panel,state);
+  }else for(const child of item.children||[])initializeNativeTabs(session,child,state);
+}
+
 /** Use the runtime's real filtering operators without installing a board. */
 function nativeFilters(session,grid,states) {
   return (grid.children||[]).filter(n=>n.className==="GridFilter").map(n=>({
@@ -193,6 +210,7 @@ export function reviewNativePresentation(session,{requireVisible=true}={}) {
   const initial=exercise(session,[{steps:[],expect:{}}])[0];
   if(!initial.ok)return {ok:false,errors:[initial.error],summary};
   const state=new State();state.values=initial.states;
+  const observedGrids=[];
   const value=(item,key)=>nativeValue(session,item,key,state.values);
   const visit=(item,parent)=>{
     // Stack's flex layout gives zero-scale children no room. Matrix children
@@ -202,11 +220,9 @@ export function reviewNativePresentation(session,{requireVisible=true}={}) {
       if(!state.get(value(item,"stateName")) && ![true,"true"].includes(value(item,"open")))return;
     }
     if(item.className==="TabControl") {
-      const panels=item.children || [],stateName=value(item,"stateName");
-      const panelName=panel=>state.interpolate(String(value(panel,"name") || ""));
-      if(!state.get(stateName) && panels.length)state.define(stateName,panelName(panels[0]));
+      const panels=item.children || [];
       if(value(item,"tabEdge")!=="none")summary.tabButtons+=panels.filter(p=>value(p,"label")!=="UNLABELED").length;
-      const selected=panels.find(p=>panels.length===1 || panelName(p)===state.get(stateName));
+      const selected=selectedNativeTab(session,item,state);
       if(selected)visit(selected,item);
       return;
     }
@@ -227,14 +243,20 @@ export function reviewNativePresentation(session,{requireVisible=true}={}) {
     // neither is a visible surface by itself.
     if(item.className==="Button" && (value(item,"label") || value(item,"symbol")))summary.buttons++;
     if(item.className==="Display")summary.displays++;
-    if(item.className==="Grid" && matchingNativeRows(session,item,state.values).some(row=>row.label || row.symbol))summary.populatedGrids++;
+    if(item.className==="Grid") {
+      const rows=matchingNativeRows(session,item,state.values);
+      if(rows.some(row=>row.label || row.symbol))summary.populatedGrids++;
+      if(observedGrids.length<12)observedGrids.push({ref:item._ref,name:value(item,"name"),matchingRows:rows.length,labels:rows.slice(0,12).map(row=>String(row.label||"").slice(0,100))});
+    }
     if(item.className==="VSD" && matchingNativeRows(session,item,state.values).some(row=>row.image))summary.controls++;
     for(const child of item.children || [])visit(child,item);
   };
   try {visit(page,null);}catch(error){return {ok:false,errors:[error.message],summary};}
   summary.controls+=summary.buttons+summary.populatedGrids+summary.displays+summary.radioOptions+summary.tabButtons+summary.indicators;
   const errors=summary.controls?[]:["The draft has no visible native output or controls. Add a Display, buttons, populated Grid, Radio options, tabs or visual scene, and verify it in Preview."];
-  return {ok:!errors.length,errors,summary};
+  const nodes=walk(page);
+  if(nodes.some(n=>n.className==="Button"&&String(n.props.label||"").toLowerCase()==="speak")&&!nodes.some(n=>n.className==="Speech"))errors.push("The Speak control has no native Speech listener. Add Speech on Page and bind the control to its stateName; setting a state alone cannot produce speech.");
+  return {ok:!errors.length,errors,summary,observed:{initialVisibleGrids:observedGrids}};
 }
 
 /** Intent checks use the same expression functions and data filters as Preview. */
@@ -269,7 +291,8 @@ export function keyboardIntentTests(session,request) {
 }
 
 /** Exercise action rules with the native state updater and expression functions.
- * Controls with direct activation (tabs/radio) must be checked in real Preview.
+ * Tab activation updates the native navigation state; ordinary Preview still
+ * verifies rendered visibility. Radio activation remains a Preview check.
  */
 export function exercise(session,tests=[]) {
   if(!Array.isArray(tests)||tests.length>24)throw new Error("Provide at most 24 interaction checks.");
@@ -285,9 +308,19 @@ export function exercise(session,tests=[]) {
         state.update(Object.fromEntries(match.children.filter(n=>n.className==="ActionUpdate").map(u=>[u.props.stateName,run(u.props.newValue,data)])));
       };
       press("init"); // Native configure also permits a wildcard startup rule.
+      initializeNativeTabs(session,session.design.layout,state);
       for(const step of test.steps || []) {
         const n=session.find(step.target),origin=n.props.name || n.props.Name;
-        if(["TabControl","TabPanel","Radio","Option"].includes(n.className))throw new Error(`${n.className} activates directly in the native interface. Verify its navigation/selection in Preview; local checks only exercise action rules.`);
+        if(n.className==="TabControl" || n.className==="TabPanel") {
+          const tabs=n.className==="TabControl"?n:session.parents.get(n._ref)?.parent;
+          if(tabs?.className!=="TabControl")throw new Error("TabPanel must belong to a TabControl.");
+          const panel=n.className==="TabPanel"?n:tabs.children.find(panel=>step.label===state.interpolate(String(nativeValue(session,panel,"label",state.values)||nativeValue(session,panel,"name",state.values)))||step.label===state.interpolate(String(nativeValue(session,panel,"name",state.values))));
+          if(!panel)throw new Error("Choose an actual TabPanel ref or a TabControl target with its tab label.");
+          state.update({[nativeValue(session,tabs,"stateName",state.values)]:state.interpolate(String(nativeValue(session,panel,"name",state.values)))});
+          initializeNativeTabs(session,session.design.layout,state);
+          continue;
+        }
+        if(["Radio","Option"].includes(n.className))throw new Error(`${n.className} activates directly in the native interface. Verify its navigation/selection in Preview; local checks only exercise action rules.`);
         if(!origin)throw new Error(`${n.className} has no named action origin. Verify this component in Preview.`);
         let data={...(["Button","Grid","VSD","Display"].includes(n.className)?{ComponentName:origin,ComponentType:n.className}:{}),...(step.data || {})};
         if(n.className==="Button") {
@@ -304,6 +337,7 @@ export function exercise(session,tests=[]) {
         if(n.className==="Grid")data.GridTone=nativeValue(session,n,"tone",state.values) || "";
         if(["Button","Grid","VSD","Display"].includes(n.className))data=Object.fromEntries(Object.entries(data).filter(([,value])=>value!=null).map(([key,value])=>[key,String(value)]));
         press(origin,data);
+        initializeNativeTabs(session,session.design.layout,state);
       }
       for(const [key,want] of Object.entries(test.expect || {})) {
         const actual=state.get(key) ?? "";

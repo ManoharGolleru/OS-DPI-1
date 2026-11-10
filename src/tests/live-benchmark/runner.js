@@ -57,10 +57,10 @@ async function main(){
   });
   $("form").addEventListener("submit",async event=>{
     event.preventDefault();if(running)return;
-    const request=$("request").value.trim(),model=$("model").value,count=Number($("attempts").value),includeBoardText=$("payloads").checked,temperature=Number($("temperature").value);
+    const request=$("request").value.trim(),model=$("model").value,count=Number($("attempts").value),includeBoardText=$("payloads").checked,temperature=Number($("temperature").value),reasoningEffort=$("effort").value;
     if(!request||!Number.isInteger(count)||count<1||count>5||!Number.isFinite(temperature)||temperature<0||temperature>2)return;
     running=true;stopRequested=false;archives.clear();$("results").replaceChildren();
-    batch={version:1,source:"real Groq via existing aiToolTurn",model,temperature,task:$("task").value,requestedAttempts:count,
+    batch={version:1,source:"real Groq via existing aiToolTurn",model,temperature,reasoningEffort,task:$("task").value,requestedAttempts:count,
       requestFingerprint:diagnosticFingerprint(request),started:new Date().toISOString(),
       ordinaryPreview:"not-run",persistence:"none; this tab refuses IndexedDB writes",attempts:[]};
     if(includeBoardText){
@@ -80,7 +80,7 @@ async function main(){
         controller=new AbortController();let timedOut=false;
         const timeout=setTimeout(()=>{timedOut=true;controller?.abort();},480000);
         try{
-          const result=await authorInterface({session,request,model,requireVisible:true,signal:controller.signal,turn:args=>aiToolTurn({...args,temperature}),
+          const result=await authorInterface({session,request,model,requireVisible:true,signal:controller.signal,turn:args=>aiToolTurn({...args,temperature,reasoningEffort}),
             onProgress:message=>{$("status").textContent=`Attempt ${i}/${count}: ${message}`;},
             onDiagnostic:event=>{diagnostic.record(event);draw(record,pre);}});
           if(controller.signal.aborted)throw new DOMException("Cancelled","AbortError");
