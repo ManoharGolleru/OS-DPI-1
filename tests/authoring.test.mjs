@@ -502,3 +502,13 @@ test('native CSS targets identify only a unique static safe Grid name',()=>{
   assert.equal(context.selection.parent,s.find('page')._ref);
  }
 });
+
+
+test('invalid bind states identify the submitted value before temporary action IDs and roll back atomically',()=>{
+ const s=session();s.edit([insert()]);const before=s.snapshot();
+ for(const state of ['Display','#label','']){
+  assert.throws(()=>s.edit([{op:'insert',parent:'page',nodes:[{className:'Display',ref:'temporaryDisplay'}]},{op:'bind',target:'choice',rules:[{updates:{[state]:"'Yes'"}}]}]),e=>e.message.includes('operations[1] bind: Bind state '+JSON.stringify(state))&&e.message.includes('native $state variable')&&e.message.includes('$Display'));
+  assert.deepEqual(s.snapshot(),before);assert.equal(s.refs.has('temporaryDisplay'),false);
+ }
+ s.edit([{op:'bind',target:'choice',rules:[{updates:{$Display:"'Yes'",'$person.name':"'Lee'"}}]}]);assert.deepEqual(s.check().errors,[]);
+});

@@ -259,6 +259,9 @@ export class AuthoringDocument {
             assert(object(rule.updates)&&Object.keys(rule.updates).length,"Each bind rule needs a nonempty updates object.");
             const condition=this.resolve(rule.condition || "").trim();
             const updates=Object.entries(rule.updates).map(([state,value])=>[this.resolve(state),this.resolve(value)]);
+            // Report the submitted name before creating temporary Action IDs.
+            // Failed atomic batches have no such IDs for the model to inspect.
+            for(const [state] of updates)assert(/^\$[\w]+(?:\.[\w]+)*$/.test(state),`Bind state ${JSON.stringify(state)} must be a native $state variable, e.g. $Display, matching the component's stateName.`);
             assert(new Set(updates.map(([state])=>state)).size===updates.length,"Each resolved state may appear only once in a bind rule.");
             return node("Action",{origin},[node("ActionCondition",{Condition:condition}),...updates.map(([stateName,newValue])=>node("ActionUpdate",{stateName,newValue}))]);
           });

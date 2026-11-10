@@ -1965,6 +1965,63 @@
       "reportedTokens": 41171,
       "sourceTraceSHA256": "456358c9f1f473749b5aee2ea57909dd7578d2e7875aa9fc76aba103b45392a2",
       "diagnosis": "Ten command rounds staged layout/actions, with several one-operation and repeated bindings plus one empty edit. Final timer batch used eight operations but bound TimerHandler rather than enclosing Method and rolled back. Late input quota wait could not fit remaining task time. No accepted archive or ordinary Preview pass."
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 23,
+      "task": "score/timer",
+      "configuration": {
+        "reasoningEffort": "medium then none only after explicit1000-token output allowance",
+        "temperature": 1
+      },
+      "outcome": "pass ordinary Preview and native export/reimport",
+      "requests": 9,
+      "reportedTokens": 45111,
+      "cachedTokens": 0,
+      "sourceTraceSHA256": "c71e3ff84bcbc1ef89e3f4ae80aa18845ac3d5e6c9d83e9f5060444cba6e614d",
+      "generationElapsedMs": 444993,
+      "observedScoreTransitions": [
+        0,
+        0,
+        1,
+        2,
+        3,
+        2,
+        0
+      ],
+      "observedStatusTransitions": [
+        "Ready",
+        "Time up",
+        "Ready"
+      ],
+      "physicalKeydownToStatusMs": [
+        2165.8,
+        2160.3,
+        2157.6
+      ],
+      "nativeTimerSeconds": 2,
+      "keyPhase": "t keyup after150ms physical key hold",
+      "silent": true,
+      "repeatedReset": true,
+      "desktopTabletBounds": "pass",
+      "nativeExportReimportEqual": true,
+      "originalBoardsUnchanged": true,
+      "evidence": "qwen-score-timer-strict-protocol-23-preview/evidence.json",
+      "verificationNote": "Initial replay helper had a local variable shadowing error. It was fixed; the same untouched model archive passed. Historical script-error metadata and screenshot retained."
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 23,
+      "task": "dwell Yes/No/Clear with red cue",
+      "configuration": {
+        "reasoningEffort": "medium, adapting to none under explicit1000 output allowance",
+        "temperature": 1
+      },
+      "outcome": "failed",
+      "requests": 12,
+      "reportedTokens": 44348,
+      "sourceTraceSHA256": "49cdd6e6a7f504e60d63eb512056313d290d78e2480435305f9efdd7c0343dcc",
+      "diagnosis": "Six bindings used Display instead of $Display. Batch errors named generated ActionUpdate IDs; the rolled-back IDs did not exist for subsequent inspections. More schema inspections followed, then daily quota exhaustion. No accepted draft or ordinary Preview pass. Protocol24 reports the submitted bind state before Action creation and explicitly documents $state fields; live requalification is pending quota reset."
     }
   ],
   "localComparison": {
@@ -2073,16 +2130,17 @@
     "Ordinary Preview and native roundtrip passes are recorded per attempt; isolated draft-ready status alone does not prove a working interface.",
     "Native speech dispatch was recorded in isolated replay browsers; audible playback was not independently measured.",
     "Local imported-grid visual requests failed despite native draft acceptance; computed-style verification caught unchanged blue buttons.",
-    "Remaining real acceptance includes score/timer, access refinements, further imported selected edits, final repeatability and deployed browser verification."
+    "Remaining real acceptance includes dwell/two-switch access, OSS imported targeted edits, final settings/repeatability and deployed browser verification."
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol23: related-operation batching guidance, advisory batch hint, and rejection of empty edits without new checks or submission",
-    "nodeTests": 89,
-    "browserTests": 95,
-    "productionBuild": "pass"
+    "source": "protocol24: direct native state diagnostics, explicit $state schema guidance, native handler cancellation reference, Qwen default for new sessions, and checksum-pinned real score/timer fixture replay",
+    "nodeTests": 90,
+    "browserTests": 97,
+    "productionBuild": "pass",
+    "live24": "not run: both models reached daily quota; earlier real outputs and24 deterministic/regression checks are separate evidence"
   },
-  "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",
+  "modelSelection": "Qwen3.8 27B is the default for new authoring sessions based on verified breadth:5/5 keyboard cohort, restaurant, selected edits, imported styling and a real score/timer activity. Existing supported choices are preserved and OSS120 remains selectable. This is a practical default, not a controlled model ranking. The broad timer used45111reported tokens; dwell/two-switch, OSS imported edits, further economy and final release qualification remain incomplete.",
   "keyboardVerificationNote": "OSS protocol12 initial viewport checks measured intentional hover-border scaling. Original failures/screenshots retained; every untouched archive subsequently passed text/layout checks with pointer off controls, interactions and native roundtrip. Earlier OSS protocol11 duplicate-display archive remains a functional failure.",
   "realGroqTargetedEdits": [
     {

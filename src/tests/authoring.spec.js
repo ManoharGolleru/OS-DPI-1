@@ -39,7 +39,7 @@ test('keyboard commands use strict structured output and native editing',async({
   const original=await page.evaluate(()=>fixture.fingerprint(fixture.captureNative()));
   await generate(page);
   expect(requests).toHaveLength(2);
-  expect(requests[0].model).toBe('openai/gpt-oss-120b');
+  expect(requests[0].model).toBe('qwen/qwen3.8-27b');
   expect(requests[0].tools).toBeUndefined();
   expect(requests[0].response_format).toMatchObject({type:'json_schema',json_schema:{strict:true}});
   const task=JSON.parse(requests[1].messages.find(m=>m.role==='user').content);
@@ -857,4 +857,26 @@ test('empty model steps request real progress while retaining the staged documen
  expect(requests).toHaveLength(3);const task=JSON.parse(requests[2].messages[1].content);
  expect(task.lastResults.some(r=>!r.ok&&r.error.includes('No edits or new checks'))).toBe(true);
  await buttons(page);await expect(page.locator('#UI .display')).toHaveText('Hello');
+});
+
+
+test('recorded missing-dollar state errors identify the bind before rollback and repair through native Preview',async({page})=>{
+ const operations=state=>[
+  {op:'insert',parent:'page',nodes:[{className:'Display',ref:'message',props:{stateName:'$Display'}},{className:'Button',ref:'yes',props:{label:'Yes'}}]},
+  {op:'bind',target:'init',rules:[{updates:{[state]:"''"}}]},
+  {op:'bind',target:'yes',rules:[{updates:{[state]:'add_word(#label)'}}]},
+ ];
+ const tests=[{steps:[],expect:{$Display:''}},{steps:[{target:'yes'}],expect:{$Display:'Yes '}}];
+ const {requests}=await setup(page,[['edit',{operations:operations('Display'),tests,summary:'Created the Yes board.'}],
+  async(route,requests)=>{
+   const feedback=feedbackMessages(requests.at(-1)).map(m=>JSON.parse(m.content));
+   expect(feedback.at(-1).error).toContain('Bind state "Display" must be a native $state variable');
+   expect(await page.evaluate(()=>fixture.Globals.layout.children[0].children)).toEqual([]);
+   expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
+   await route.fulfill({json:toolReply('edit',{operations:operations('$Display'),tests,summary:'Created the Yes board.'}),headers:{'x-ratelimit-remaining-tokens':'99999'}});
+  },
+ ]);
+ await generate(page,'Create a Yes button that appends its word to an initially empty message.');expect(requests).toHaveLength(2);
+ expect(requests[0].response_format.json_schema.schema.$defs.update.properties.state.description).toContain('$Display');
+ await buttons(page);await page.locator('#UI').getByRole('button',{name:'Yes',exact:true}).click();await expect(page.locator('#UI .display')).toHaveText('Yes');
 });

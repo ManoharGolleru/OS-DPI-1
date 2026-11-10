@@ -7,10 +7,10 @@ const tag=value=>({type:"string",enum:[value]});
 const fields=array(ref("field")),states=array(ref("state"));
 const definitions={
   field:object({key:string,value:scalar}),
-  state:object({state:string,value:scalar}),
-  update:object({state:string,expression:{...string,description:"Native formula; use single quotes for text, e.g. add_word(#label), 'Ready', or ''."}}),
+  state:object({state:{...string,description:"Native $state, e.g. $Display."},value:scalar}),
+  update:object({state:{...string,description:"Native $state, e.g. $Display."},expression:{...string,description:"Native formula; use single quotes for text, e.g. add_word(#label), 'Ready', or ''."}}),
   rule:object({condition:string,updates:array(ref("update"))}),
-  step:object({target:{...string,description:"Exact component ref, e.g. answer, without @. @ref.property substitutes scalar property values only."},label:nullable({...string,description:"Grid/VSD content label; null for a Button or TabPanel."}),data:fields}),
+  step:object({target:{...string,description:"Exact component ref, without @."},label:nullable({...string,description:"Grid/VSD label; null for a Button."}),data:fields}),
   test:object({name:string,initial:states,steps:array(ref("step")),expect:states}),
 };
 const operationSchemas={

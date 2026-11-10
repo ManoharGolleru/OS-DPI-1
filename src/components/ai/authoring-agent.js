@@ -4,7 +4,7 @@ import {examples, keyboardRecipe, exercise,keyboardIntentTests,reviewNativePrese
 import {SECTIONS, walk, presentationReview} from "./authoring-document";
 import {compactSchemas,describeForModel,requestContext,compactFeedback} from "./authoring-context";
 
-export const MODELS = [["openai/gpt-oss-120b","GPT-OSS 120B"],["qwen/qwen3.8-27b","Qwen 3.8 27B"]];
+export const MODELS = [["qwen/qwen3.8-27b","Qwen 3.8 27B"],["openai/gpt-oss-120b","GPT-OSS 120B"]];
 function relevantNativeHelp(request,context) {
   const help={};
   if(/\b(score|counter|counting|increment)\b/i.test(request))help.state=examples("state");
