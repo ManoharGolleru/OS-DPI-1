@@ -1636,6 +1636,88 @@
         }
       ],
       "sourceTraceFile": "qwen-dwell-strict-protocol-15-medium.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "task": "custom",
+      "started": "2026-11-10T05:32:57.832Z",
+      "protocol": 16,
+      "wireProtocol": "strict-json",
+      "temperature": 0.6,
+      "reasoningEffort": "low",
+      "request": "Create a score display starting at 0, Add 1, Remove 1 and Reset buttons. Remove must not go below zero. Reset returns the score to zero and status Ready. Also show Ready initially. Pressing T starts a two-second timer; only after it expires show Time up. The timer must not change the score. Keep the activity silent.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "98eeb088df82c4e4980c124b9e5e5687116d2ed6a76afdc63d3a6193f404a7aa",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 5,
+            "promptTokens": 27569,
+            "completionTokens": 8434,
+            "cachedTokens": 7680,
+            "usageAvailableForAllRequests": true
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "stop",
+            "stop"
+          ]
+        }
+      ],
+      "sourceTraceFile": "gpt-oss-score-timer-strict-protocol-16-low.json"
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task": "custom",
+      "started": "2026-11-10T05:32:58.499Z",
+      "protocol": 16,
+      "wireProtocol": "strict-json",
+      "temperature": 1,
+      "reasoningEffort": "medium",
+      "request": "Create a board with Yes, No, Clear and one message display, initially empty. Hover Yes or No for 0.8 seconds to append that word. Show a visible hover cue. Moving away early cancels the choice; staying still after selection must not keep adding it. Clear empties the message. Use pointer dwell.",
+      "requestedAttempts": 1,
+      "stopped": false,
+      "sourceTraceSHA256": "9d1c0763e8cc09e57ddad7550991288e589f3c22492c1528c11676236483a595",
+      "attempts": [
+        {
+          "attempt": 1,
+          "nativeDraftOutcome": "failed",
+          "ordinaryPreviewAndExportReimport": "not-run",
+          "usage": {
+            "requests": 4,
+            "promptTokens": 9936,
+            "completionTokens": 3769,
+            "cachedTokens": 0,
+            "usageAvailableForAllRequests": false
+          },
+          "statuses": [
+            200,
+            200,
+            200,
+            429
+          ],
+          "finishReasons": [
+            "stop",
+            "stop",
+            "stop",
+            "unknown"
+          ]
+        }
+      ],
+      "sourceTraceFile": "qwen-dwell-strict-protocol-16-medium.json"
     }
   ],
   "localComparison": {
@@ -1748,7 +1830,7 @@
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol16: inspected object and nested wiring survive schema compaction, exact reference correction, persistent bounded validation, executable native timer guide",
+    "source": "protocol16 checkpoint331b14b: object-first inspection with nested wiring retained, exact-ref feedback, bounded persistent validation and executable timer guidance",
     "nodeTests": 84,
     "browserTests": 85,
     "productionBuild": "pass"

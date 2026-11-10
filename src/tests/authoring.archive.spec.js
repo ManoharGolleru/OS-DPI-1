@@ -8,6 +8,13 @@ test('documented timer responds to physical keys in ordinary Preview and after n
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{localStorage.setItem('osdpi-open-ai-generator','1');window.spoken=[];speechSynthesis.speak=u=>window.spoken.push(u.text);});
  await page.goto('/OS-DPI-1/#timer-reference-original');await expect(page.getByTestId('author-import')).toBeVisible();
+ // URL changes precede the async section loads. Wait for the final native
+ // Methods replacement before inspecting the imported board's fingerprint.
+ const rememberMethods=()=>page.evaluate(async()=>{window.previousMethods=(await import('/OS-DPI-1/globals.js')).default.methods;});
+ const imported=async()=>{
+  await page.waitForFunction(async()=>(await import('/OS-DPI-1/globals.js')).default.methods!==window.previousMethods);
+  await expect(page.locator('#UI .display')).toHaveCount(2);
+ };
  const design=await page.evaluate(async()=>{
   const n=await import('/OS-DPI-1/components/ai/authoring-native.js'),p=await import('/OS-DPI-1/components/ai/authoring-protocol.js');
   const session=n.documentSession(n.emptyNative());
@@ -20,7 +27,9 @@ test('documented timer responds to physical keys in ordinary Preview and after n
   return session.snapshot();
  });
  const archive=zipSync(Object.fromEntries(Object.entries(design).map(([key,value])=>[key+'.json',strToU8(JSON.stringify(value))])));
+ await rememberMethods();
  await page.getByTestId('author-import').setInputFiles({name:'Timer-reference.osdpi',mimeType:'application/zip',buffer:Buffer.from(archive)});await page.waitForURL(/#Timer_reference$/);
+ await imported();
  const fingerprint=()=>page.evaluate(async()=>{const n=await import('/OS-DPI-1/components/ai/authoring-native.js');return n.fingerprint(n.captureNative());});
  const before=await fingerprint(),ui=page.locator('#UI');
  async function interact(){
@@ -41,7 +50,8 @@ test('documented timer responds to physical keys in ordinary Preview and after n
  }
  await interact();
  const downloaded=page.waitForEvent('download');await page.getByTestId('author-download').click();const bytes=readFileSync(await(await downloaded).path());
- await page.getByTestId('author-import').setInputFiles({name:'Timer-roundtrip.osdpi',mimeType:'application/zip',buffer:bytes});await page.waitForURL(/#Timer_roundtrip$/);expect(await fingerprint()).toBe(before);
+ await rememberMethods();
+ await page.getByTestId('author-import').setInputFiles({name:'Timer-roundtrip.osdpi',mimeType:'application/zip',buffer:bytes});await page.waitForURL(/#Timer_roundtrip$/);await imported();expect(await fingerprint()).toBe(before);
  await interact();expect(errors).toEqual([]);
 });
 
