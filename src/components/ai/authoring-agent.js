@@ -4,12 +4,13 @@ import {examples, keyboardRecipe, exercise,keyboardIntentTests,reviewNativePrese
 import {SECTIONS, walk, presentationReview} from "./authoring-document";
 import {compactSchemas,describeForModel,requestContext,compactFeedback} from "./authoring-context";
 
-export const MODELS = [["openai/gpt-oss-120b","GPT-OSS 120B"],["qwen/qwen3.8-27b","Qwen 3.8 27B"],["openai/gpt-oss-20b","GPT-OSS 20B"]];
-function relevantNativeHelp(request) {
+export const MODELS = [["openai/gpt-oss-120b","GPT-OSS 120B"],["qwen/qwen3.8-27b","Qwen 3.8 27B"]];
+function relevantNativeHelp(request,context) {
   const help={};
   if(/\b(score|counter|counting|increment)\b/i.test(request))help.state=examples("state");
   if(/\b(timer|countdown|delay)\b|after\s+\d+(?:\.\d+)?\s*(?:seconds?|secs?)\b/i.test(request))help.timer=examples("timer");
   if(/\b(dwell|scan(?:ning)?|hover(?:ing)?)\b|two[ -]switch(?:es)?/i.test(request))help.access=examples("access");
+  if(context.customStyles?.some(n=>n.className==="Customize") && /\b(color|colou?r|green|blue|red|background|appearance|style)\b/i.test(request))help.style=examples("style");
   return Object.keys(help).length?"\nRELEVANT NATIVE WIRING (adapt to this request):\n"+JSON.stringify(help):"";
 }
 const COMMAND_NAMES = new Set(["inspect","edit","recipe","check","finish"]);
@@ -102,14 +103,19 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     for(const name of [...mentioned])if(session.catalog[name].children.length<=2)mentioned.push(...session.catalog[name].children);
     const known=[...new Set([...(selected&&session.refs.has(selected)?[session.find(selected).className]:["Page","Stack","Button","Display"]),...mentioned,...[...inspectedClasses].slice(-6)])];
     const task=requestContext(session,{request,selected,history,round,rounds});
+    if(task.customStyles?.some(n=>n.className==="Customize") && /\b(color|colou?r|green|blue|red|background|appearance|style)\b/i.test(request))known.push("Customize");
     task.tokenBudgetRemaining=TOKEN_BUDGET-budgetUsed();
     // Reserve the longest possible numeric fields before estimating context.
     // Replacing them with smaller final values cannot increase prompt size.
     task.commandTokenBudget=completionCap;
     task.editBatchLimit=Math.max(1,Math.floor(completionCap/400));
     task.turnsRemaining=Math.min(rounds-round,Math.max(1,Math.floor(task.tokenBudgetRemaining/lastTokens)));
-    task.created=[...session.refs.values()].filter(n=>!initialRefs.has(n._ref)&&session.parents.get(n._ref)?.section==="layout").slice(0,24)
-      .map(n=>({ref:n._ref,className:n.className,name:n.props?.name || n.props?.Name || ""}));
+    const created=[...session.refs.values()].filter(n=>!initialRefs.has(n._ref)&&session.parents.get(n._ref)?.section!=="content"&&!["Action","ActionCondition","ActionUpdate"].includes(n.className));
+    task.createdCount=created.length;
+    task.created=created.slice(0,80).map(n=>session.parents.get(n._ref)?.section==="layout"
+      ? {ref:n._ref,parent:session.parents.get(n._ref)?.parent?._ref,className:n.className,
+        ...(n.props.name||n.props.Name?{name:n.props.name||n.props.Name}:{}),...(n.props.stateName?{stateName:n.props.stateName}:{})}
+      : describeForModel(session,n,{depth:0,brief:true}));
     const selectedNode=selected&&session.refs.get(selected),selectedOrigin=selectedNode?.props?.name || selectedNode?.props?.Name;
     task.bindings=session.design.actions.children.filter(n=>!initialRefs.has(n._ref)||n.props.origin===selectedOrigin).slice(-12).map(n=>({ref:n._ref,origin:n.props.origin,
       conditions:n.children.filter(c=>c.className==="ActionCondition").map(c=>String(c.props.Condition||"").slice(0,160)),
@@ -123,7 +129,11 @@ export async function authorInterface({session,request,selected=null,model=MODEL
       task.page={ref:task.page.ref,className:task.page.className,totalChildren:task.page.totalChildren};
       task.outline=Object.fromEntries(Object.entries(task.outline).map(([s,n])=>[s,{ref:n.ref,className:n.className,children:n.children}]));
       if(task.selection)task.selection={...task.selection,children:undefined};
-      task.previousRequests=[];task.created=task.created.slice(-8);
+      task.previousRequests=[];
+      task.created=task.created.map(n=>!n.props?n:({...n,
+        props:Object.fromEntries(Object.entries(n.props).filter(([,v])=>typeof v!=="string"||v.length<=80)),
+        omittedProps:[...new Set([...(n.omittedProps||[]),...Object.entries(n.props).filter(([,v])=>typeof v==="string"&&v.length>80).map(([k])=>k)])],
+      }));
       task.bindings=task.bindings.slice(-6);
       task.lastResults=outcomes.slice(-2);
       // Inactive methods are editable too. Their timer refs are needed to
@@ -131,7 +141,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     };
     if(smallContext)shrink();
     // Keep complete assistant/tool groups together; never send an orphaned tool response.
-    const messages=[{role:"system",content:GUIDE+relevantNativeHelp(request)+"\nEXISTING EXPRESSION FUNCTIONS (do not invent others): "+nativeExpressionReference().available.join(", ")+"\nRELEVANT NATIVE SCHEMAS (inspect any others):\n"+JSON.stringify(compactSchemas(session.catalog,known))},
+    const messages=[{role:"system",content:GUIDE+relevantNativeHelp(request,task)+"\nEXISTING EXPRESSION FUNCTIONS (do not invent others): "+nativeExpressionReference().available.join(", ")+"\nRELEVANT NATIVE SCHEMAS (inspect any others):\n"+JSON.stringify(compactSchemas(session.catalog,known))},
       {role:"user",content:JSON.stringify(redact(task))},...transcript.slice(-2).flat()];
     let maxTokens=completionCap;
     const promptEstimate=()=>Math.ceil((JSON.stringify(toWireMessages(messages)).length+JSON.stringify(AUTHORING_RESPONSE_FORMAT).length)/charsPerToken);
@@ -139,7 +149,7 @@ export async function authorInterface({session,request,selected=null,model=MODEL
     if(estimateTokens()>7900){shrink();messages[1].content=JSON.stringify(redact(task));}
     maxTokens=Math.min(maxTokens,Math.max(Math.min(1500,completionCap),7900-promptEstimate()));
     // Drop older COMPLETE tool exchanges, never orphan individual tool messages.
-    while(estimateTokens()>7900 && messages.length>3) {
+    while(estimateTokens()>7900 && messages.length>2) {
       messages.splice(2,1);
       while(messages[2]?.role==="tool")messages.splice(2,1);
     }
@@ -237,7 +247,8 @@ export async function authorInterface({session,request,selected=null,model=MODEL
             presentation,interactions:exercise(session,session.nativeTests||[]),instruction:"These native components and actions are assembled and checked. If the request is satisfied, call finish now; no need to inspect unchanged default access methods."};
         } else if(name==="check"){
           const checked=session.check(),interactions=exercise(session,[...(session.nativeTests||[]),...interactionTests]),presentation=reviewNativePresentation(session,{requireVisible:requiresSurface});
-          result={ok:!checked.errors.length&&interactions.every(t=>t.ok)&&presentation.ok,...checked,interactions,presentation};
+          const ok=!checked.errors.length&&interactions.every(t=>t.ok)&&presentation.ok;
+          result={ok,...checked,interactions,presentation,...(ok?{instruction:"These native checks passed. If the requested behavior is complete, call finish with title and summary now. Repeating unchanged checks does not submit or apply the draft. Continue editing only for remaining requested behavior."}:{})};
         }
         else if(name==="finish") {
           if(args.question) {

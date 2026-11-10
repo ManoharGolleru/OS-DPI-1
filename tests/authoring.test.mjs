@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {AuthoringDocument,walk,node,presentationReview} from '../src/components/ai/authoring-document.js';
-import {compactFeedback,compactSchemas,describeForModel} from '../src/components/ai/authoring-context.js';
+import {compactFeedback,compactSchemas,describeForModel,requestContext} from '../src/components/ai/authoring-context.js';
 const json=name=>JSON.parse(readFileSync(new URL(name,import.meta.url),'utf8'));
 const catalog=json('./native-catalog.json'), empty=json('./native-empty.json');
 const session=()=>new AuthoringDocument(empty,catalog);
@@ -478,4 +478,27 @@ test('colliding new aliases identify the existing object and reject the entire b
  const s=session(),ref=s.find('page')._ref,before=s.snapshot();
  assert.throws(()=>s.edit([{op:'insert',parent:'page',nodes:[{className:'Button',ref,props:{label:'No'}}]}]),/Reference already exists:.*Page.*meaningful ref.*Nothing in this batch was applied/);
  assert.deepEqual(s.snapshot(),before);
+});
+
+
+test('physical keyboard conditions can reuse a key without becoming generated native identities',()=>{
+ const s=session();
+ s.edit([{op:'insert',parent:'method',nodes:['first','second'].map(ref=>({className:'Method',ref,props:{Active:true,Pattern:'NullPattern'},children:[{className:'KeyHandler',children:[{className:'HandlerKeyCondition',props:{Key:'t'}},{className:'HandlerKeyCondition',ref:ref+'Empty'}]}]}))}]);
+ assert.deepEqual(s.check().errors,[]);
+ assert.equal(s.find('firstEmpty').props.Key,undefined);
+ assert.equal(s.find('secondEmpty').props.Key,undefined);
+ assert.notEqual(s.find('first').props.Key,s.find('second').props.Key);
+ const before=s.snapshot();
+ assert.throws(()=>s.edit([{op:'update',target:'second',props:{Key:s.find('first').props.Key}}]),/Duplicate native key/);
+ assert.deepEqual(s.snapshot(),before);
+});
+
+
+test('native CSS targets identify only a unique static safe Grid name',()=>{
+ for(const [names,expected] of [[['static expansion'],true],[['duplicate','duplicate'],false],[['=$View'],false],[['odd#name'],false],[['price$Name'],false],[['quoted"name'],false]]){
+  const s=session();s.edit([{op:'insert',parent:'page',nodes:names.map((name,i)=>({className:'Grid',ref:'grid'+i,props:{name}}))}]);
+  const context=requestContext(s,{request:'Make this grid green',selected:'grid0',history:[],round:0,rounds:12});
+  assert.equal(Boolean(context.selection.cssTarget),expected);
+  assert.equal(context.selection.parent,s.find('page')._ref);
+ }
 });

@@ -809,3 +809,43 @@ test('a short quota retry after seven minutes uses the actual eight-minute deadl
  expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
  expect(errors).toEqual([]);
 });
+
+
+test('created access inventory survives compact context and four later inspections',async({page})=>{
+ const replies=[async route=>route.fulfill({status:413,json:{error:{message:'Request too large; reduce context.'}}}),
+  ['edit',{operations:[{op:'insert',parent:'method',nodes:[{className:'Method',ref:'delayMethod',props:{Active:true,Pattern:'NullPattern'},children:[
+   {className:'Timer',ref:'delay',props:{Interval:2}},
+   {className:'KeyHandler',ref:'start',props:{Signal:'keyup'},children:[{className:'HandlerKeyCondition',ref:'keyT',props:{Key:'t'}},{className:'ResponderStartTimer',ref:'startDelay',props:{TimerName:'@delay.Key'}}]},
+   {className:'TimerHandler',ref:'done',props:{Signal:'timer',TimerName:'@delay.Key'},children:[{className:'ResponderEmit',ref:'emit'}]},
+  ]}]}]}],
+  ...Array.from({length:4},()=>['inspect',{classes:['Display']}]),
+  async route=>route.fulfill({status:401,json:{error:{message:'Synthetic stop after inventory capture'}}}),
+ ];
+ const {requests}=await setup(page,replies.map(reply=>Array.isArray(reply)?async route=>route.fulfill({json:{...toolReply(...reply),usage:{prompt_tokens:1000,total_tokens:1200}},headers:{'x-ratelimit-remaining-tokens':'99999','access-control-expose-headers':'x-ratelimit-remaining-tokens'}}):reply));
+ await page.getByTestId('author-request').fill('Create a timing activity.');await page.getByTestId('author-run').click();await page.waitForFunction(()=>!fixture.panel.busy);
+ expect(requests).toHaveLength(7);
+ const task=JSON.parse(requests.at(-1).messages[1].content),created=Object.fromEntries(task.created.map(n=>[n.ref,n]));
+ expect(task.createdCount).toBe(7);expect(Object.keys(created)).toEqual(['delayMethod','delay','start','keyT','startDelay','done','emit']);
+ expect(created.delayMethod.props.Active).toBe(true);expect(created.delay).toMatchObject({parent:'delayMethod',props:{Interval:2}});
+ expect(created.keyT).toMatchObject({parent:'start',props:{Key:'t'}});expect(created.start.props.Signal).toBe('keyup');
+ expect(created.startDelay.props.TimerName).toBe(created.delay.props.Key);expect(created.done.props.TimerName).toBe(created.delay.props.Key);
+ expect(created.emit.parent).toBe('done');expect(await page.evaluate(()=>fixture.db.designName)).toBe('original');
+});
+
+test('imported CSS guidance scopes a selected unique Grid and preserves other backgrounds',async({page})=>{
+ const {requests,errors}=await setup(page,[['edit',{operations:[{op:'insert',parent:'page',nodes:[{className:'Customize',props:{css:'.grid[#ComponentName="selected grid"] button:not(.grid-empty) {background-color: lightgreen;}'}}]}],summary:'Changed the selected grid appearance.'}]]);
+ await page.evaluate(()=>{
+  const f=fixture,s=f.documentSession(f.emptyNative());
+  s.edit([{op:'insert',parent:'page',nodes:[{className:'Grid',ref:'chosen',props:{name:'selected grid',rows:1,columns:1}},{className:'Button',props:{label:'Other'}},{className:'Customize',props:{css:'button {background-color: skyblue;}'}}]},{op:'rows',rows:[{label:'Chosen'}]}]);
+  f.installNative(s.snapshot());f.panel.mode='edit';
+  f.Globals.layout.select(f.Globals.layout.children[0].children[0]);
+  f.draw();
+ });
+ await generate(page,"Make this grid's buttons light green.");
+ const task=JSON.parse(requests[0].messages[1].content);
+ expect(task.selection.cssTarget).toBe('.grid[#ComponentName="selected grid"] button:not(.grid-empty)');
+ expect(task.selection.parent).toBeTruthy();expect(requests[0].messages[0].content).toContain('automatically scopes rules');
+ await buttons(page);await expect(page.locator('#UI').getByRole('button',{name:'Chosen',exact:true})).toHaveCSS('background-color','rgb(144, 238, 144)');
+ await expect(page.locator('#UI').getByRole('button',{name:'Other',exact:true})).toHaveCSS('background-color','rgb(135, 206, 235)');
+ expect(errors).toEqual([]);
+});

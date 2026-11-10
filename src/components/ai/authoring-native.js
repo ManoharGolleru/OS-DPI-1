@@ -63,7 +63,7 @@ export function emptyNative() {
   for(const section of Object.keys(ROOTS))for(const n of walk(result[section])) {
     // Use this build's current property definitions for new boards.
     n.props=Object.fromEntries(Object.entries(n.props).filter(([k])=>schemas[n.className]?.props[k]));
-    if(n.props.Key){
+    if(schemas[n.className]?.props.Key?.generated && n.props.Key){
       if(keys.has(n.props.Key))n.props.Key="native_"+n.className+"_"+keys.size;
       keys.add(n.props.Key);
     }
@@ -100,6 +100,7 @@ export function examples(topic="") {
       {op:"bind",target:"init",mode:"merge",rules:[{condition:"",updates:[{state:"$Status",expression:"'Ready'"}]}]},
     ],tests:null,title:null,summary:null}},
     speech:"Speech watches stateName ($Speak by default). A Speak button binds {$Speak:'$Display'} with condition '$Display'. Clear binds {$Display:\"''\"}. Character insertion uses add_letter(#label), add_word(#label) appends the word AND one space; add_letter adds exactly its argument. Return one update per state expression; never chain update helpers with semicolons. Backspace uses replace_last_letter(''). Expression string literals must be quoted. Preserve voiceURI, never invent a voice ID.",
+    style:"Native Customize is a Page child with property css. Its CSS editor automatically scopes rules to #UI and supports [#ComponentName=\"native name\"] selectors; do not add #UI yourself. Imported Customize rules can override Grid.buttonColor. For a selected uniquely named Grid, use selection.cssTarget in ONE new Customize rule to set background-color, preserving existing palette rules and other components. Inspect existing Customize refs if needed. Use literal CSS colors such as lightgreen, not quoted expression text. A Grid's buttonColor alone may not change visible buttons when imported CSS sets their backgrounds.",
     media:"Use only uploaded media filenames. Grid rows use symbol for an image and label for its caption; a Button has symbol. Audio watches its stateName; an ActionUpdate sets that state to a quoted audio filename. Inspect Audio, VSD and their native schemas for other media layouts. Do not invent filenames or URLs.",
   };
   if(!topic)return hints;

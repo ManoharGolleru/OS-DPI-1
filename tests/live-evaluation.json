@@ -1900,6 +1900,43 @@
         }
       ],
       "sourceTraceFile": "gpt-oss-score-timer-strict-protocol-19-medium.json"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "protocol": 20,
+      "configuration": {
+        "reasoningEffort": "medium",
+        "temperature": 0.6
+      },
+      "task": "score and two-second physical-key timer",
+      "outcome": "failed",
+      "requests": 13,
+      "reportedTokens": 66987,
+      "cachedTokens": 16640,
+      "sourceTraceSHA256": "5bfac8e2c75d4075a6dacab9c6fc55126c13102b7b7927df75b5ce5959da93bc",
+      "diagnosis": "No reply truncations after bounded batching. Repeated native input nodes were absent from the persistent layout-only created inventory; global Key validation also incorrectly rejected repeated physical key t. No accepted archive or ordinary Preview pass."
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "protocol": 21,
+      "task": "score/timer",
+      "outcome": "failed",
+      "requests": 11,
+      "reportedTokens": 52702,
+      "cachedTokens": 12288,
+      "sourceTraceSHA256": "3e7ef6c05d5c7faf8922816b8aa97bbb4050ce9fd360c7cd463f2f4261b18cbd",
+      "diagnosis": "Timer native components staged without the false physical-key duplicate error, but a repeated timer-handler insertion and correction sequence exhausted the bounded task budget."
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 21,
+      "task": "imported DEAN scoped green",
+      "outcome": "failed",
+      "requests": 12,
+      "reportedTokens": 45713,
+      "cachedTokens": 4096,
+      "sourceTraceSHA256": "d053c8984895b10e42e5c2a24f8f6262fcfe6d4e54cb5e328b818cf4d64a0e75",
+      "diagnosis": "Initial native edit and checks succeeded, then model repeated unchanged check commands instead of finish. Output allowance adapted to a reported1000-token limit. Later input quota exhaustion ended request; original board unchanged. No applied archive or visual pass."
     }
   ],
   "localComparison": {
@@ -2012,9 +2049,9 @@
   ],
   "rawEvidenceLocation": "Full redacted traces, native archives and screenshots are retained in this task workspace under outputs/evidence; sourceTraceSHA256 identifies each trace. These files are not all embedded in this repository.",
   "currentRegressionValidation": {
-    "source": "protocol20: actual reply budgets/chunking, truncation feedback, elapsed-deadline quota retries, native root metadata and state-function guidance",
-    "nodeTests": 87,
-    "browserTests": 92,
+    "source": "protocol22: cross-section created refs/parents, native UID distinction, safe native CSS guidance, compact layout inventory and submission feedback",
+    "nodeTests": 89,
+    "browserTests": 94,
     "productionBuild": "pass"
   },
   "modelSelection": "Not final. Latest five keyboards passed ordinary Preview and native roundtrip for both models. OSS120 low/.6 restaurant passed with two requests and 11020 reported tokens; Qwen medium/1 restaurant passed with five requests and 28527 reported tokens. Qwen timer attempts remain failed; access and imported workflows still under evaluation.",
@@ -2066,6 +2103,26 @@
         "qwen-selected-bigger-protocol-18-manual-ai-undo.json",
         "qwen-selected-bigger-protocol-18-size/evidence.json",
         "qwen-selected-bigger-protocol-18-preview/evidence.json"
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "protocol": 20,
+      "configuration": {
+        "reasoningEffort": "medium",
+        "temperature": 1
+      },
+      "request": "Make this selected imported grid light green; preserve unrelated board content and behavior.",
+      "requests": 1,
+      "reportedTokens": 2931,
+      "outcome": "failed requested appearance",
+      "sourceTraceSHA256": "899b5354103be7633e28fc1517ed7f831c6b5bc2e6e0cb82aa7c0d0ac734cd53",
+      "nativeDiffs": [
+        "Grid.buttonColor set to lightgreen"
+      ],
+      "ordinaryPreview": "Actual rendered button backgrounds remained rgb(135, 206, 235); imported Customize palette has greater CSS specificity. Native validation success did not establish visual success.",
+      "evidence": [
+        "qwen-dean-green-protocol-20-preview/evidence.json"
       ]
     }
   ],

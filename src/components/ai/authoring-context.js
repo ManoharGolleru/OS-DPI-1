@@ -43,7 +43,7 @@ export function compactFeedback(result,{catalog={},limit=5000}={}) {
   if(result.object){
     short.object=result.object;
     if(size(short)>limit-500){
-      const brief=n=>({ref:n.ref,className:n.className,totalChildren:n.totalChildren,
+      const brief=n=>({ref:n.ref,parent:n.parent,className:n.className,totalChildren:n.totalChildren,
         props:Object.fromEntries(Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v!=="string"||v.length<=240)),
         omittedProps:Object.entries(n.props||n.fields||{}).filter(([,v])=>typeof v==="string"&&v.length>240).map(([key])=>key),
         ...(n.children?{children:n.children.map(brief)}:{})});
@@ -83,7 +83,7 @@ export function describeForModel(session,item,{depth=1,offset=0,limit=20,brief=f
   const children=item.children || [];
   const props=brief?Object.fromEntries(Object.entries(item.props||{}).filter(([,v])=>typeof v!=="string"||v.length<=240)):item.props;
   const omittedProps=brief?Object.keys(item.props||{}).filter(k=>!(k in props)):[];
-  const result={ref:item._ref,className:item.className,props,totalChildren:children.length,...(omittedProps.length?{omittedProps}: {})};
+  const result={ref:item._ref,parent:session.parents.get(item._ref)?.parent?._ref,className:item.className,props,totalChildren:children.length,...(omittedProps.length?{omittedProps}: {})};
   if(depth>0)result.children=children.slice(offset,offset+limit).map(n=>describeForModel(session,n,{depth:depth-1,limit,brief}));
   return result;
 }
@@ -96,6 +96,13 @@ export function requestContext(session,{request,selected,history,round,rounds}) 
     ...shallow(root),items:root.children.slice(0,12).map(shallow),
   }]));
   const selection=selected&&session.refs.has(selected)?describeForModel(session,session.find(selected),{depth:1,limit:8,brief:true}):null;
+  // Native selectors use stable component names, never transient editor IDs.
+  // Only supply a selector when it identifies exactly this Grid.
+  if(selection?.className==="Grid"){
+    const name=selection.props.name;
+    if(typeof name==="string" && name && name.length<=120 && /^[A-Za-z0-9 _-]+$/.test(name) && walkLayoutGrids(session).filter(n=>n.props.name===name).length===1)
+      selection.cssTarget=`.grid[#ComponentName=${JSON.stringify(name)}] button:not(.grid-empty)`;
+  }
   const stateLinks=[...session.refs.values()].filter(n=>session.parents.get(n._ref)?.section==="layout"&&n.props?.stateName).slice(0,16)
     .map(n=>({ref:n._ref,className:n.className,state:n.props.stateName}));
   const access=session.design.method.children.slice(0,6).map(n=>({ref:n._ref,name:n.props.Name,active:n.props.Active,pattern:n.props.Pattern,
@@ -108,3 +115,5 @@ export function requestContext(session,{request,selected,history,round,rounds}) 
     ...(customStyles.length?{customStyles:customStyles.slice(0,8),customStyleNote:"Existing native CSS can override appearance. Inspect these refs for visual edits; preserve unrelated rules."}:{}),
     availableComponents:Object.keys(session.catalog),turn:round+1,turnsRemaining:rounds-round};
 }
+
+function walkLayoutGrids(session){return [...session.refs.values()].filter(n=>n.className==="Grid"&&session.parents.get(n._ref)?.section==="layout");}

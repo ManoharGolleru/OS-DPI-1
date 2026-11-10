@@ -153,7 +153,7 @@ export class AuthoringDocument {
     assert(spec.children===undefined || Array.isArray(spec.children),"Native children must be an array of component nodes.");
     const result=node(spec.className, this.resolve(spec.props || {}));
     const fields=this.catalog[spec.className].props;
-    if(fields.Key && !result.props.Key) result.props.Key=this.unique("key_"+ (++this.sequence));
+    if(fields.Key?.generated && !result.props.Key) result.props.Key=this.unique("key_"+ (++this.sequence));
     if(fields.name && !own(result.props,"name")) result.props.name=this.unique(spec.ref || spec.className.toLowerCase());
     if(spec.className==="TabControl" && !own(result.props,"stateName")) {
       const used=new Set([...this.refs.values()].map(n=>n.props?.stateName ?? this.catalog[n.className]?.props.stateName?.default));
@@ -391,7 +391,7 @@ export class AuthoringDocument {
       else if(!this.mediaNames.has(symbol))issue(n,"symbol",`Media '${symbol}' has not been uploaded.`,true);
     }
     const keys=new Map();
-    for(const n of nodes)if(n.props.Key){
+    for(const n of nodes)if(this.catalog[n.className]?.props.Key?.generated && n.props.Key){
       const key=n.props.Key;
       if(keys.has(key))issue(n,"Key",`Duplicate native key '${key}'.`);
       else keys.set(key,n);
