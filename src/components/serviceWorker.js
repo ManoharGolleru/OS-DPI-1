@@ -24,7 +24,10 @@ function signalUpdateAvailable() {
 }
 
 // only start the service worker in production mode
-if (import.meta.env.PROD && navigator.serviceWorker) {
+// The Pages branch preview shares an origin with the main site. Keep its
+// service worker out of the production scope during manual testing.
+if (import.meta.env.PROD && navigator.serviceWorker &&
+    !location.pathname.startsWith("/OS-DPI-1/preview/")) {
   window.addEventListener("load", async () => {
     registration = await navigator.serviceWorker.register("service-worker.js", {
       scope: "/OS-DPI-1/",
