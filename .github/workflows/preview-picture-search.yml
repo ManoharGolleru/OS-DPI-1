@@ -1,0 +1,70 @@
+name: Preview picture search on GitHub Pages
+
+on:
+  push:
+    branches: [feature/picture-search-keyword]
+    paths:
+      - src/**
+      - .github/workflows/preview-picture-search.yml
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages-preview
+      url: https://manohargolleru.github.io/OS-DPI-1/preview/
+
+    steps:
+      - name: Checkout unchanged main site
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: production
+
+      - name: Checkout picture search test branch
+        uses: actions/checkout@v7
+        with:
+          ref: feature/picture-search-keyword
+          path: feature
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Build the main site for the root URL
+        working-directory: production/src
+        run: npm install && npm run build
+
+      - name: Copy main example boards
+        run: |
+          mkdir -p production/src/dist/examples
+          cp -R production/examples/updated/. production/src/dist/examples/
+
+      - name: Build branch at /preview/ without changing main
+        working-directory: feature/src
+        run: npm install && npm run build -- --base /OS-DPI-1/preview/
+
+      - name: Copy branch preview into the Pages site
+        run: |
+          mkdir -p production/src/dist/preview/examples
+          cp -R feature/src/dist/. production/src/dist/preview/
+          cp -R feature/examples/updated/. production/src/dist/preview/examples/
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: production/src/dist
+
+      - name: Deploy main plus separate branch preview
+        id: deployment
+        uses: actions/deploy-pages@v5
