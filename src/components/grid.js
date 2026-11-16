@@ -7,7 +7,7 @@ import { formatSlottedString } from "./slots";
 import Globals from "app/globals";
 import db from "app/db";
 import { fileOpen } from "browser-fs-access";
-import { findPictogram, isPictogram, pictureChoices } from "./pictograms";
+import { findPictogram, isPictogram, pictureChoices, searchPictograms } from "./pictograms";
 import { boards, setSquareLink, showBoard } from "./pieces";
 import { Tones, sayLikeButton } from "./speech";
 import "css/grid.css";
@@ -328,7 +328,8 @@ class Grid extends TreeBase {
   }
 
   /** The picture choices showing for a word on the board (designer)
-   * @type {{absIdx: number, row: number, column: number, label: string, choices: string[] | null} | null} */
+   * @type {{absIdx: number, row: number, column: number, label: string, keyword: string,
+   *   request: number, choices: string[] | null} | null} */
   _picturePick = null;
 
   /** Show picture choices for a word, next to it on the board
@@ -339,13 +340,29 @@ class Grid extends TreeBase {
    */
   async openPictures(absIdx, row, column, label) {
     this._editCell = null;
-    const pick = { absIdx, row, column, label, choices: /** @type {string[] | null} */ (null) };
+    const pick = { absIdx, row, column, label, keyword: "", request: 0,
+      choices: /** @type {string[] | null} */ (null) };
     this._picturePick = pick;
     openPicker = this;
     Globals.state.update();
     const { choices } = await pictureChoices([label]);
-    if (this._picturePick !== pick) return;
+    if (this._picturePick !== pick || pick.request !== 0) return;
     pick.choices = choices.get(label) ?? [];
+    Globals.state.update();
+  }
+
+  /** Search by a different term without changing the button's label.
+   * @param {NonNullable<Grid["_picturePick"]>} pick */
+  async searchPictures(pick) {
+    const keyword = pick.keyword.trim();
+    if (!keyword || this._picturePick !== pick) return;
+    const request = ++pick.request;
+    pick.choices = null;
+    Globals.state.update();
+    const choices = await searchPictograms(keyword);
+    // Ignore results from older searches or a closed picture picker.
+    if (this._picturePick !== pick || pick.request !== request) return;
+    pick.choices = choices.slice(0, 6);
     Globals.state.update();
   }
 
@@ -415,6 +432,28 @@ class Grid extends TreeBase {
       <div class="picture-popover-title">
         <strong>“${pick.label}”</strong>
         <button aria-label="Close" @click=${() => this.closePictures()}>✕</button>
+      </div>
+      <div class="picture-popover-search">
+        <label for=${`picture-search-${this.id}`}>Search pictures (button name stays the same)</label>
+        <div class="picture-popover-search-controls">
+          <input
+            id=${`picture-search-${this.id}`}
+            type="search"
+            placeholder="Try a different word"
+            .value=${pick.keyword}
+            @input=${(event) => {
+              pick.keyword = /** @type {HTMLInputElement} */ (event.target).value;
+            }}
+            @keydown=${(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                this.searchPictures(pick);
+              }
+            }}
+          />
+          <button @click=${() => this.searchPictures(pick)}>Search</button>
+        </div>
       </div>
       <div class="picture-popover-choices">
         ${pick.choices === null
