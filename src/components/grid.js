@@ -410,18 +410,18 @@ class Grid extends TreeBase {
   /** The picture choices, floating by the word's square */
   picturePopover() {
     const pick = /** @type {NonNullable<Grid["_picturePick"]>} */ (this._picturePick);
-    const { rows, columns } = this._shape;
     const row = Globals.data.getMatchingRows(this.children, false)[pick.absIdx];
     const current = String(row?.symbol ?? "");
     const link = String(row?.link ?? "");
-    // below the square in the top half, above it in the bottom half, and
-    // kept inside the grid sideways
+    // Center within the visible board canvas so all controls are reachable,
+    // including for one-row grids and buttons near the bottom of the screen.
+    const canvas = document.getElementById("UI")?.getBoundingClientRect();
     /** @type {Partial<CSSStyleDeclaration>} */
-    const style = {};
-    if (pick.row <= rows / 2) style.top = `${(100 * pick.row) / rows}%`;
-    else style.bottom = `${(100 * (rows - pick.row + 1)) / rows}%`;
-    if (pick.column <= columns / 2) style.left = `${(100 * (pick.column - 1)) / columns}%`;
-    else style.right = `${(100 * (columns - pick.column)) / columns}%`;
+    const style = {
+      top: `${canvas ? canvas.top + canvas.height / 2 : innerHeight / 2}px`,
+      left: `${canvas ? canvas.left + canvas.width / 2 : innerWidth / 2}px`,
+      maxWidth: `${canvas ? Math.max(180, canvas.width - 16) : innerWidth - 16}px`,
+    };
 
     return html`<div
       class="picture-popover"
