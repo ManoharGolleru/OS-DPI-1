@@ -335,19 +335,19 @@ body.designing .grid button video {
   cursor: pointer;
 }
 
-/* a word without a picture: a corner badge to add one, on hover */
+/* a word without a picture: keep the add-picture indicator visible */
 .grid button .picture-add {
   position: absolute;
   top: 4px;
   left: 6px;
   font-size: 0.75em;
-  opacity: 0;
+  opacity: 0.8;
   cursor: pointer;
   transition: opacity var(--transition-fast);
 }
 
 body.designing .grid button:hover .picture-add {
-  opacity: 0.85;
+  opacity: 1;
 }
 
 .grid .picture-popover {
@@ -387,6 +387,37 @@ body.designing .grid button:hover .picture-add {
   width: 2em;
   height: 2em;
   padding: 0;
+}
+
+.picture-popover-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+.picture-popover-search label {
+  font-size: 0.9em;
+  color: var(--text2);
+}
+
+.picture-popover-search-controls {
+  display: flex;
+  gap: 0.35em;
+}
+
+.picture-popover-search-controls input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4em 0.55em;
+  font: inherit;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface1);
+  color: var(--text1);
+}
+
+.grid .picture-popover-search-controls button {
+  padding: 0.4em 0.7em;
 }
 
 .picture-popover-choices {
