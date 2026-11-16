@@ -272,3 +272,46 @@ test('real native expression metadata rejects numeric initialization before acce
   expect(result.error).toContain("Expression 'newValue' must be a string");
   expect(result.after).toBe(result.before);expect(result.changes).toEqual([]);
 });
+
+test('picture picker retries search without renaming and a selected pictogram persists',async({page})=>{
+  // Mock only the existing ARASAAC service, so the UI and its click handler stay real.
+  const resultFor = (id,keyword)=>({_id:id,categories:['animal'],tags:[],keywords:[{keyword}]});
+  await page.route('https://api.groq.com/**',route=>route.fulfill({status:401,json:{error:{message:'not configured'}}}));
+  await page.route('https://api.arasaac.org/**',route=>{
+    const url=decodeURIComponent(route.request().url()).toLowerCase();
+    const results=url.endsWith('/search/rest')?[resultFor(41301,'rest'),resultFor(41302,'relax')]
+      :url.endsWith('/search/rhino')?[]
+      :url.endsWith('/search/rhinoceros')?[resultFor(41303,'rhinoceros')]:[];
+    return route.fulfill({status:200,json:results});
+  });
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO9oynEAAAAASUVORK5CYII=','base64');
+  await page.route('https://static.arasaac.org/**',route=>route.fulfill({status:200,contentType:'image/png',body:png}));
+  const original=await page.evaluate(()=>{
+    const f=fixture,s=f.documentSession(f.emptyNative());
+    s.edit([{op:'insert',parent:'page',nodes:[{className:'Grid',ref:'words',props:{name:'words',rows:1,columns:1}}]},
+      {op:'rows',rows:[{label:'I need a break'}]}]);
+    f.installNative(s.snapshot());
+    return f.Globals.data.contentRows[0].label;
+  });
+  expect(original).toBe('I need a break');
+  const icon=page.locator('#UI .grid button[data-drag-idx="0"] .picture-add');
+  await expect(icon).toBeVisible();
+  const position=await icon.boundingBox();
+  expect(position).not.toBeNull();
+  await page.mouse.click(position.x+position.width/2,position.y+position.height/2);
+  await expect(page.locator('.picture-popover')).toBeVisible();
+  const search=page.locator('.picture-popover-search input');
+  const submit=page.locator('.picture-popover-search button');
+  await search.fill('rhino');
+  await submit.click();
+  await expect(page.locator('.picture-popover-note')).toHaveText('No match found');
+  await search.fill('rest');
+  await submit.click();
+  await expect(page.locator('.picture-popover-choices button')).toHaveCount(2);
+  await page.locator('.picture-popover-choices button').first().click();
+  await expect(page.locator('.picture-popover')).toHaveCount(0);
+  await expect.poll(()=>page.evaluate(()=>fixture.Globals.data.contentRows[0]?.symbol))
+    .toBe('https://static.arasaac.org/pictograms/41301/41301_300.png');
+  expect(await page.evaluate(()=>fixture.Globals.data.contentRows[0]?.label)).toBe(original);
+  await expect(page.locator('#UI .grid button[data-drag-idx="0"]')).toContainText(original);
+});
